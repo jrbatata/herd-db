@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
 export SWIFTPM_MODULECACHE_OVERRIDE="$PWD/.build/ModuleCache"
 
-swift build -c release --disable-sandbox
+swift build -c release --disable-sandbox >&2
 binary_dir="$(swift build -c release --disable-sandbox --show-bin-path)"
 
 app="$PWD/dist/herd.app"

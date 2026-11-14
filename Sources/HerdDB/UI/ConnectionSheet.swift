@@ -32,15 +32,14 @@ struct ConnectionSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             header
 
-            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 9) {
-                row("Nome:") {
-                    TextField("prod-postgres", text: $config.name)
-                        .textFieldStyle(.roundedBorder)
-                        .focused($nameFocused)
-                }
-
-                row("Tipo:") {
-                    HStack {
+            VStack(alignment: .leading, spacing: 18) {
+                group(nil) {
+                    field("Nome") {
+                        TextField("prod-postgres", text: $config.name)
+                            .focused($nameFocused)
+                    }
+                    Divider()
+                    field("Tipo") {
                         Picker("Tipo", selection: $config.engine) {
                             ForEach(DatabaseEngine.allCases) { engine in
                                 Text(engine.isAvailable ? engine.displayName : "\(engine.displayName) (em breve)")
@@ -49,53 +48,47 @@ struct ConnectionSheet: View {
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
-                        .frame(width: 220, alignment: .leading)
-                        Spacer()
+                        .fixedSize()
                     }
                 }
 
-                row("Host:") {
-                    HStack(spacing: 8) {
+                group("Conexão") {
+                    field("Host") {
                         TextField("localhost", text: $config.host)
-                            .textFieldStyle(.roundedBorder)
-                        TextField("5432", value: $config.port, format: .number)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 76)
+                    }
+                    Divider()
+                    field("Porta") {
+                        TextField("5432", value: $config.port, format: .number.grouping(.never))
+                    }
+                    Divider()
+                    field("Banco") {
+                        TextField("Opcional", text: $config.database)
                     }
                 }
 
-                row("Usuário:") {
-                    TextField("postgres", text: $config.username)
-                        .textFieldStyle(.roundedBorder)
+                group("Autenticação") {
+                    field("Usuário") {
+                        TextField("postgres", text: $config.username)
+                    }
+                    Divider()
+                    field("Senha") {
+                        SecureField("Chaveiro do macOS", text: $password)
+                    }
                 }
 
-                row("Senha:") {
-                    SecureField("", text: $password)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                row("Banco:") {
-                    TextField("Opcional. Se vazio, mostra todos", text: $config.database)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                row("Usar SSL:") {
-                    HStack {
+                group("Segurança") {
+                    field("Usar SSL") {
                         Toggle("Usar SSL", isOn: $config.useTLS)
                             .labelsHidden()
                             .toggleStyle(.switch)
-                            .controlSize(.small)
-                        Spacer()
+                            .controlSize(.mini)
                     }
                 }
 
                 if !config.engine.isAvailable {
-                    GridRow {
-                        Color.clear.frame(width: 1)
-                        Label { Text("O driver de SQL Server chega na fase 6. Por enquanto só PostgreSQL conecta.") } icon: { Icon(.info, size: 14) }
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(.secondary)
-                    }
+                    Label { Text("O driver de SQL Server chega na fase 6. Por enquanto só PostgreSQL conecta.") } icon: { Icon(.info, size: 14) }
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
                 }
             }
             .padding(.horizontal, 22)
@@ -131,7 +124,7 @@ struct ConnectionSheet: View {
         }
         .padding(.horizontal, 22)
         .padding(.top, 20)
-        .padding(.bottom, 16)
+        .padding(.bottom, 14)
     }
 
     private var footer: some View {
@@ -173,14 +166,37 @@ struct ConnectionSheet: View {
         }
     }
 
-    private func row<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        GridRow {
-            Text(label)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .gridColumnAlignment(.trailing)
-            content()
+    private func group<Content: View>(_ title: String?, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let title {
+                Text(title)
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 4)
+            }
+
+            VStack(spacing: 0) {
+                content()
+            }
+            .padding(.horizontal, 12)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.primary.opacity(0.05))
+            }
         }
+    }
+
+    private func field<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack(spacing: 12) {
+            Text(label)
+                .font(.system(size: 12.5))
+            Spacer(minLength: 12)
+            content()
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.trailing)
+                .font(.system(size: 12.5))
+        }
+        .frame(minHeight: 34)
     }
 
     private func testConnection() {

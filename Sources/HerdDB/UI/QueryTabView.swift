@@ -5,12 +5,12 @@ import HerdCore
 struct QueryTabView: View {
     @Environment(AppModel.self) private var app
     @Bindable var tab: QueryTab
+    @Bindable var workspace: WorkspaceState
 
     /// Altura do editor; o grid fica com o restante. Arrastável pelo divisor.
     @State private var editorHeight: CGFloat = 230
     @State private var dragOrigin: CGFloat?
     @State private var databases: [String] = []
-    @State private var showHistory = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,11 +20,12 @@ struct QueryTabView: View {
             GeometryReader { proxy in
                 VStack(spacing: 0) {
                     editor
-                        .frame(height: effectiveEditorHeight(in: proxy.size.height))
+                        .frame(height: workspace.resultsVisible ? effectiveEditorHeight(in: proxy.size.height) : proxy.size.height)
 
+                    if workspace.resultsVisible {
                     SplitHandle()
                         .gesture(
-                            DragGesture()
+                            DragGesture(minimumDistance: 1, coordinateSpace: .global)
                                 .onChanged { value in
                                     if dragOrigin == nil { dragOrigin = editorHeight }
                                     let proposed = (dragOrigin ?? editorHeight) + value.translation.height
@@ -35,17 +36,19 @@ struct QueryTabView: View {
                         )
 
                     results
+                    }
                 }
+                .transaction { $0.animation = nil }
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
         .task(id: tab.connectionID) { await loadDatabases() }
-        .inspector(isPresented: $showHistory) {
+        .inspector(isPresented: $workspace.inspectorVisible) {
             QueryHistoryInspector(
                 entries: app.history.latest(for: tab.connectionID, database: tab.database, limit: 500),
                 onPick: { entry in tab.sql = entry.sql },
                 onClear: { app.history.clear() },
-                onClose: { showHistory = false }
+                onClose: { workspace.inspectorVisible = false }
             )
             .inspectorColumnWidth(min: 260, ideal: 320, max: 460)
         }
@@ -200,23 +203,26 @@ struct QueryTabView: View {
     }
 
     private var historyButton: some View {
-        Button {
-            showHistory.toggle()
-        } label: {
-            Icon(.clock, size: 14)
-                .foregroundStyle(.secondary)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
+        WindowIconButton(symbol: .clock, selected: workspace.inspectorVisible,
+                         help: "Histórico de scripts (⌥⌘B)") {
+            workspace.inspectorVisible.toggle()
         }
-        .buttonStyle(.plain)
-        .help("Histórico de scripts")
     }
 
     // MARK: - Editor and results
 
     private var editor: some View {
         ZStack(alignment: .topLeading) {
-            SQLEditorView(text: $tab.sql, selection: $tab.selection)
+            SQLEditorView(
+                text: $tab.sql,
+                selection: $tab.selection,
+                dialect: app.connections.connection(id: tab.connectionID)?.engine == .sqlServer ? .sqlServer : .postgres,
+                onReady: { editor in
+                    workspace.editor = editor
+                    workspace.editorTabID = tab.id
+                },
+                completions: completions
+            )
 
             if tab.sql.isEmpty {
                 Text("Escreva SQL aqui…")
@@ -232,7 +238,47 @@ struct QueryTabView: View {
     }
 
     private var results: some View {
-        QueryResultsView(state: tab.state)
+        QueryResultsView(
+            state: tab.state,
+            tablePage: tab.tablePage,
+            tableFilter: tab.tableFilter,
+            tableSortColumn: tab.tableSortColumn,
+            tableSortDescending: tab.tableSortDescending,
+            sourceTable: tab.sourceTable,
+            schema: tab.schema,
+            onBrowsePage: tab.tablePage == nil ? nil : { page in
+                tab.browseTable(app: app, page: page)
+            },
+            onApplyFilter: tab.tablePage == nil ? nil : { filter in
+                tab.tableFilter = filter
+                tab.browseTable(app: app, page: 0)
+            },
+            onSort: tab.tablePage == nil ? nil : { column in
+                if tab.tableSortColumn == column {
+                    tab.tableSortDescending.toggle()
+                } else {
+                    tab.tableSortColumn = column
+                    tab.tableSortDescending = false
+                }
+                tab.browseTable(app: app, page: 0)
+            },
+            onCommitSQL: tab.sourceTable == nil ? nil : { statements in
+                guard let config = app.connections.connection(id: tab.connectionID) else { return }
+                let driver = app.drivers.driver(for: config)
+                let txSQL = (["BEGIN;"] + statements + ["COMMIT;"]).joined(separator: "\n")
+                _ = try await driver.run(txSQL, database: tab.database)
+                let currentPage = tab.tablePage?.page ?? 0
+                tab.browseTable(app: app, page: currentPage)
+            },
+            onOpenForeignKey: { ref, val in
+                workspace.openReferencedRow(
+                    connectionID: tab.connectionID,
+                    database: tab.database,
+                    reference: ref,
+                    value: val
+                )
+            }
+        )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -242,10 +288,32 @@ struct QueryTabView: View {
         guard let list = try? await driver.listDatabases() else { return }
         databases = list.map(\.name)
     }
+
+    /// Suggests objects of the current database, using the tab schema as default.
+    private func completions(
+        _ context: SQLCompletionContext,
+        sql: String
+    ) async -> [SQLCompletionItem] {
+        guard let config = app.connections.connection(id: tab.connectionID) else { return [] }
+        let driver = app.drivers.driver(for: config)
+        let catalog = await app.catalog.catalog(
+            connectionID: tab.connectionID,
+            database: tab.database,
+            driver: driver
+        ) ?? SQLCatalog()
+
+        return SQLCompletionEngine.suggestions(
+            for: context,
+            in: sql,
+            catalog: catalog,
+            defaultSchema: tab.schema,
+            dialect: driver.dialect
+        )
+    }
 }
 
 /// Divisor fino entre editor e resultados, com cursor de redimensionamento.
-private struct SplitHandle: View {
+struct SplitHandle: View {
     @State private var isHovering = false
 
     var body: some View {
@@ -266,31 +334,6 @@ private struct SplitHandle: View {
                 NSCursor.pop()
             }
         }
-    }
-}
-
-// MARK: - Key hint
-
-/// Atalho em formato de tecla, com fundo translúcido sobre o botão.
-private struct KeyHint: View {
-    let text: String
-    let onProminent: Bool
-
-    init(_ text: String, onProminent: Bool) {
-        self.text = text
-        self.onProminent = onProminent
-    }
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: 10, weight: .medium))
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1.5)
-            .background {
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(onProminent ? Color.white.opacity(0.22) : Color.primary.opacity(0.08))
-            }
-            .opacity(0.9)
     }
 }
 
@@ -327,7 +370,7 @@ private struct QueryHistoryInspector: View {
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 9)
+            .frame(height: 38)
 
             Divider()
 

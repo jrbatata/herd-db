@@ -21,6 +21,8 @@ struct VisualEffectBackground: NSViewRepresentable {
 /// Deixa a barra de título transparente e o conteúdo ocupando a janela toda,
 /// com os semáforos (fechar/minimizar/zoom) flutuando sobre a sidebar.
 struct WindowConfigurator: NSViewRepresentable {
+    var onFullScreenChange: ((Bool) -> Void)? = nil
+    var onCloseRequest: (() -> Bool)? = nil
     /// Quanto os semáforos descem, pra ficarem centrados na barra de 36pt.
     private let trafficLightOffset: CGFloat = 3
 
@@ -31,6 +33,7 @@ struct WindowConfigurator: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
+            window.tabbingMode = .disallowed
             window.isMovableByWindowBackground = true
             window.isOpaque = false
             window.backgroundColor = .clear
@@ -39,30 +42,52 @@ struct WindowConfigurator: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ view: NSView, context: Context) {}
+    func updateNSView(_ view: NSView, context: Context) {
+        context.coordinator.onFullScreenChange = onFullScreenChange
+        context.coordinator.onCloseRequest = onCloseRequest
+    }
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator {
+        let coordinator = Coordinator()
+        coordinator.onFullScreenChange = onFullScreenChange
+        coordinator.onCloseRequest = onCloseRequest
+        return coordinator
+    }
 
     @MainActor
-    final class Coordinator {
+    final class Coordinator: NSObject {
         private var observers: [NSObjectProtocol] = []
         private var baseOrigins: [NSWindow.ButtonType: CGFloat] = [:]
+        var onFullScreenChange: ((Bool) -> Void)?
+        var onCloseRequest: (() -> Bool)?
 
         func attach(to window: NSWindow, offset: CGFloat) {
             let names: [Notification.Name] = [
                 NSWindow.didResizeNotification,
                 NSWindow.didBecomeKeyNotification,
                 NSWindow.didExitFullScreenNotification,
+                NSWindow.didEnterFullScreenNotification,
             ]
             for name in names {
                 observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self, weak window] _ in
                     MainActor.assumeIsolated {
                         guard let self, let window else { return }
                         self.reposition(window, offset: offset)
+                        self.onFullScreenChange?(window.styleMask.contains(.fullScreen))
                     }
                 })
             }
             reposition(window, offset: offset)
+            if let button = window.standardWindowButton(.closeButton) {
+                button.target = self
+                button.action = #selector(closeRequested(_:))
+            }
+            onFullScreenChange?(window.styleMask.contains(.fullScreen))
+        }
+
+        @objc private func closeRequested(_ sender: Any?) {
+            guard onCloseRequest?() != false else { return }
+            (sender as? NSView)?.window?.performClose(sender)
         }
 
         private func reposition(_ window: NSWindow, offset: CGFloat) {

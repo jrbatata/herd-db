@@ -9,8 +9,8 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             topActions
+                .zIndex(10)
             filterField
-            header
 
             if app.connections.connections.isEmpty {
                 emptyState
@@ -29,23 +29,14 @@ struct SidebarView: View {
     private var topActions: some View {
         HStack(spacing: 2) {
             Spacer()
-            iconButton(.refresh, help: "Atualizar árvore (⌘R)") { workspace.tree.reloadAll() }
-            iconButton(.newQuery, help: "Novo script (⌘T)") { workspace.newQueryTab() }
+            WindowIconButton(symbol: .refresh, selected: false, help: "Atualizar árvore (⌘R)") { workspace.tree.reloadAll() }
+            WindowIconButton(symbol: .newConnection, selected: false, help: "Nova conexão (⇧⌘N)") { workspace.presentNewConnection() }
         }
         .padding(.horizontal, 10)
         .frame(height: 36)
     }
 
-    private func iconButton(_ symbol: IconSymbol, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Icon(symbol, size: 16)
-                .foregroundStyle(.secondary)
-                .frame(width: 26, height: 26)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-    }
+    @FocusState private var filterFocused: Bool
 
     private var filterField: some View {
         @Bindable var tree = workspace.tree
@@ -56,39 +47,31 @@ struct SidebarView: View {
             TextField("Filtrar objetos", text: $tree.filter)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12.5))
+                .focused($filterFocused)
         }
         .padding(.horizontal, 11)
         .frame(height: 34)
         .background {
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
+            Capsule()
                 .fill(Color(nsColor: .controlBackgroundColor).opacity(0.65))
                 .shadow(color: .black.opacity(0.05), radius: 1.5, y: 1)
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 4)
-    }
-
-    private var header: some View {
-        HStack(spacing: 6) {
-            Text("Conexões")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            Button {
-                workspace.presentNewConnection()
-            } label: {
-                Icon(.newConnection, size: 16)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Nova conexão (⇧⌘N)")
+        .overlay {
+            Capsule()
+                .strokeBorder(Color.accentColor.opacity(filterFocused ? 0.85 : 0), lineWidth: 2.5)
+        }
+        .overlay {
+            Capsule()
+                .strokeBorder(Color.accentColor.opacity(filterFocused ? 0.25 : 0), lineWidth: 5)
+                .padding(-2.5)
+                .allowsHitTesting(false)
+        }
+        .animation(.easeOut(duration: 0.15), value: filterFocused)
+        .onChange(of: workspace.focusFilterToken) { _, _ in
+            filterFocused = true
         }
         .padding(.horizontal, 12)
-        .frame(height: 34)
+        .padding(.bottom, 4)
     }
 
     private var treeList: some View {
@@ -167,16 +150,22 @@ struct TreeRowView: View {
 
     private var node: TreeNode { row.node }
     private var isSelected: Bool {
-        node.isSelectable && tree.selection == node.id
+        node.isSelectable && (tree.selectedIDs.contains(node.id) || tree.selection == node.id)
     }
 
     var body: some View {
         HStack(spacing: 5) {
             chevron
 
-            Icon(node.symbolName, size: node.kind == .column ? 12 : 16, solid: isSelected)
-                .foregroundStyle(iconColor)
-                .frame(width: 17)
+            Group {
+                if node.kind == .connection {
+                    Icon(tree.connectedIDs.contains(node.connectionID) ? .cloudCheck : .cloudX, size: 16)
+                } else {
+                    Icon(node.symbolName, size: node.kind == .column ? 12 : 16, solid: isSelected)
+                }
+            }
+            .foregroundStyle(iconColor)
+            .frame(width: 17)
 
             Text(node.title)
                 .font(.system(size: 12.5, weight: node.kind == .connection ? .semibold : .regular))
@@ -211,7 +200,14 @@ struct TreeRowView: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .onTapGesture(count: 2) { handleDoubleClick() }
-        .onTapGesture { tree.select(node) }
+        .onTapGesture {
+            let flags = NSApp.currentEvent?.modifierFlags ?? []
+            tree.select(
+                node,
+                extendRange: flags.contains(.shift),
+                toggleSingle: flags.contains(.command)
+            )
+        }
         .contextMenu { contextMenu }
         .confirmationDialog(
             "Remover “\(node.title)”?",
@@ -260,18 +256,21 @@ struct TreeRowView: View {
 
     private var iconColor: Color {
         if node.kind == .error { return .red }
+        if node.kind == .connection {
+            return tree.connectedIDs.contains(node.connectionID) ? .green : .red
+        }
         if isSelected { return .white }
         // Paleta enxuta: azul só no que é aberto/navegável (conexão, tabela, view),
         // âmbar nas chaves, o resto neutro.
         switch node.kind {
-        case .connection, .table, .view:
+        case .table, .view:
             return .accentColor
         case .database, .schema, .tablesFolder, .viewsFolder:
             return .secondary
         case .column:
             if node.column?.isPrimaryKey == true { return .orange }
             return Color.secondary.opacity(0.8)
-        case .error:
+        case .connection, .error:
             return .red
         }
     }
@@ -294,36 +293,151 @@ struct TreeRowView: View {
         case .connection:
             if let config = workspace.app.connections.connection(id: node.connectionID) {
                 Button("Novo script") { workspace.newQueryTab(for: config) }
+                    .keyboardShortcut("t", modifiers: .command)
+                Button("Criar banco de dados…") { workspace.presentCreateDatabase(for: config) }
+                    .keyboardShortcut("d", modifiers: [.command, .option])
                 Button("Editar conexão…") { workspace.presentEditConnection(config) }
+                    .keyboardShortcut("e", modifiers: .command)
                 Divider()
                 Button("Atualizar") { tree.reload(node) }
+                    .keyboardShortcut("r", modifiers: .command)
                 Divider()
                 Button("Remover conexão…", role: .destructive) { confirmRemoval = true }
+                    .keyboardShortcut(.delete, modifiers: .command)
             }
 
         case .table, .view:
             Button("Abrir dados") { workspace.openTable(node) }
+                .keyboardShortcut(.return, modifiers: [])
+            if node.kind == .table {
+                Button("Estrutura / DDL…") { workspace.presentTableStructure(for: node) }
+                    .keyboardShortcut("i", modifiers: .command)
+            }
             Button("Novo script") { workspace.newQueryTab(for: node) }
+                .keyboardShortcut("t", modifiers: .command)
+            Menu("Scripts SQL") {
+                ForEach(SQLReadyQuery.allCases, id: \.self) { query in
+                    Button(query.title) {
+                        workspace.openReadyQuery(query, for: node)
+                    }
+                    .keyboardShortcut(query.shortcut, modifiers: [.command, .option, .shift])
+                }
+                if node.kind == .table {
+                    Divider()
+                    Button("CREATE (DDL)") {
+                        workspace.openCreateTableScript(for: node)
+                    }
+                    .keyboardShortcut("6", modifiers: [.command, .option, .shift])
+                }
+            }
+            if node.kind == .table {
+                Menu("Criar") {
+                    Button("Tabela…") { workspace.presentCreateTable(for: node) }
+                        .keyboardShortcut("n", modifiers: [.command, .option])
+                    Button("Schema…") { workspace.presentCreateSchema(for: node) }
+                        .keyboardShortcut("s", modifiers: [.command, .option])
+                    Divider()
+                    Button("Coluna…") { workspace.create(.column, for: node) }
+                        .keyboardShortcut("k", modifiers: [.command, .option])
+                    Button("Índice…") { workspace.create(.index, for: node) }
+                        .keyboardShortcut("i", modifiers: [.command, .option])
+                    Button("Regra…") { workspace.create(.rule, for: node) }
+                        .keyboardShortcut("u", modifiers: [.command, .option])
+                    Button("Trigger…") { workspace.create(.trigger, for: node) }
+                        .keyboardShortcut("g", modifiers: [.command, .option])
+                    Button("Política RLS…") { workspace.create(.policy, for: node) }
+                        .keyboardShortcut("y", modifiers: [.command, .option])
+                }
+            } else {
+                Button("Criar tabela…") { workspace.presentCreateTable(for: node) }
+                    .keyboardShortcut("n", modifiers: [.command, .option])
+            }
+            Button("Excluir…", role: .destructive) { workspace.presentDropObject(for: node) }
+                .keyboardShortcut(.delete, modifiers: .command)
+            Button("Excluir em cascata…", role: .destructive) { workspace.presentDropObject(for: node, force: true) }
+                .keyboardShortcut(.delete, modifiers: [.command, .option])
+            Divider()
+            Button("Backup…") { workspace.processes.backup(node, connections: workspace.app.connections) }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+            if node.kind == .table {
+                Menu("Importar/Exportar CSV") {
+                    Button("Importar CSV…") { workspace.processes.transferCSV(node, connections: workspace.app.connections, importing: true) }
+                        .keyboardShortcut("i", modifiers: [.command, .shift])
+                    Button("Exportar CSV…") { workspace.processes.transferCSV(node, connections: workspace.app.connections, importing: false) }
+                        .keyboardShortcut("e", modifiers: [.command, .shift])
+                }
+            }
+            Button("Ver processos…") { workspace.openProcesses() }
+                .keyboardShortcut("p", modifiers: [.command, .option])
             Divider()
             Button("Copiar nome") { copy(node.title) }
+                .keyboardShortcut("c", modifiers: [.command, .option])
             Button("Atualizar") { tree.reload(node) }
+                .keyboardShortcut("r", modifiers: .command)
 
         case .database, .schema, .tablesFolder, .viewsFolder:
             Button("Novo script") { workspace.newQueryTab(for: node) }
+                .keyboardShortcut("t", modifiers: .command)
+            if node.kind == .database || node.kind == .schema || node.kind == .tablesFolder {
+                Menu("Criar") {
+                    if let config = workspace.app.connections.connection(id: node.connectionID) {
+                        Button("Banco de dados…") { workspace.presentCreateDatabase(for: config) }
+                            .keyboardShortcut("d", modifiers: [.command, .option])
+                        Divider()
+                    }
+                    Button("Tabela…") { workspace.presentCreateTable(for: node) }
+                        .keyboardShortcut("n", modifiers: [.command, .option])
+                    Button("Schema…") { workspace.presentCreateSchema(for: node) }
+                        .keyboardShortcut("s", modifiers: [.command, .option])
+                }
+            }
+            if node.kind == .database || node.kind == .schema {
+                Button("Excluir…", role: .destructive) { workspace.presentDropObject(for: node) }
+                    .keyboardShortcut(.delete, modifiers: .command)
+                Button(node.kind == .database ? "Excluir forçando desconexão…" : "Excluir em cascata…", role: .destructive) {
+                    workspace.presentDropObject(for: node, force: true)
+                }
+                .keyboardShortcut(.delete, modifiers: [.command, .option])
+            }
+            if node.kind == .database {
+                Divider()
+                Button("Backup…") { workspace.processes.backup(node, connections: workspace.app.connections) }
+                    .keyboardShortcut("b", modifiers: [.command, .shift])
+                Button("Restore…") { workspace.processes.restore(node, connections: workspace.app.connections) }
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
+                Button("Ver processos…") { workspace.openProcesses() }
+                    .keyboardShortcut("p", modifiers: [.command, .option])
+            }
             Divider()
             Button("Copiar nome") { copy(node.title) }
+                .keyboardShortcut("c", modifiers: [.command, .option])
             Button("Atualizar") { tree.reload(node) }
+                .keyboardShortcut("r", modifiers: .command)
 
         case .column:
             Button("Copiar nome") { copy(node.title) }
+                .keyboardShortcut("c", modifiers: [.command, .option])
 
         case .error:
             Button("Tentar novamente") { tree.retry(afterErrorNode: node) }
+                .keyboardShortcut("r", modifiers: .command)
         }
     }
 
     private func copy(_ value: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
+    }
+}
+
+private extension SQLReadyQuery {
+    var shortcut: KeyEquivalent {
+        switch self {
+        case .select: "1"
+        case .selectLimited: "2"
+        case .insert: "3"
+        case .update: "4"
+        case .delete: "5"
+        }
     }
 }

@@ -18,6 +18,7 @@ struct MainWindow: View {
     @State private var workspace: WorkspaceState
     @AppStorage("sidebarWidth") private var sidebarWidth: Double = 270
     @State private var dragStartWidth: Double?
+    @State private var isFullScreen = false
 
     /// Espaço reservado à esquerda para os semáforos + botão da sidebar.
     private let controlsInset: CGFloat = 128
@@ -44,7 +45,7 @@ struct MainWindow: View {
                 VStack(spacing: 0) {
                     TopBarView(
                         workspace: workspace,
-                        leadingInset: workspace.sidebarVisible ? 4 : controlsInset
+                        leadingInset: workspace.sidebarVisible ? 4 : (isFullScreen ? 8 : controlsInset)
                     )
                     DetailView(workspace: workspace)
                         .padding(.trailing, 8)
@@ -54,9 +55,12 @@ struct MainWindow: View {
             }
             .ignoresSafeArea()
 
-            sidebarToggle
+            if !isFullScreen { sidebarToggle }
         }
-        .background(WindowConfigurator())
+        .background(WindowConfigurator(
+            onFullScreenChange: { isFullScreen = $0 },
+            onCloseRequest: { workspace.confirmCloseWindow() }
+        ))
         .focusEffectDisabled()
         .navigationTitle(workspace.windowTitle)
         .frame(minWidth: 960, minHeight: 600)
@@ -64,6 +68,39 @@ struct MainWindow: View {
         .sheet(item: $workspace.connectionEditor) { editor in
             ConnectionSheet(editor: editor, workspace: workspace)
                 .environment(app)
+        }
+        .sheet(item: $workspace.tableWizard) { wizard in
+            CreateTableSheet(wizard: wizard, workspace: workspace)
+                .environment(app)
+        }
+        .sheet(item: $workspace.schemaWizard) { wizard in
+            CreateSchemaSheet(wizard: wizard, workspace: workspace)
+                .environment(app)
+        }
+        .sheet(item: $workspace.databaseWizard) { wizard in
+            CreateDatabaseSheet(wizard: wizard, workspace: workspace)
+                .environment(app)
+        }
+        .sheet(item: $workspace.tableStructure) { state in
+            TableStructureSheet(state: state, workspace: workspace)
+                .environment(app)
+        }
+        .sheet(item: $workspace.dropWizard) { wizard in
+            DropObjectSheet(wizard: wizard, workspace: workspace)
+                .environment(app)
+        }
+        .sheet(item: $workspace.tableSubObjectWizard) { wizard in
+            CreateTableSubObjectSheet(wizard: wizard, workspace: workspace)
+                .environment(app)
+        }
+        .onChange(of: workspace.processes.visible) { _, visible in
+            if visible { workspace.activeTabID = workspace.processesTabID }
+            else if workspace.activeTabID == workspace.processesTabID {
+                workspace.activeTabID = workspace.tabs.last?.id
+            }
+        }
+        .onChange(of: workspace.processes.entries.count) { oldCount, newCount in
+            if newCount > oldCount { workspace.openProcesses() }
         }
         .alert(
             workspace.alert?.title ?? "",
@@ -83,16 +120,10 @@ struct MainWindow: View {
     }
 
     private var sidebarToggle: some View {
-        Button {
+        WindowIconButton(symbol: .sidebarLeft, selected: workspace.sidebarVisible,
+                         help: "Mostrar ou ocultar a barra lateral (⌘B)") {
             withAnimation(.snappy(duration: 0.25)) { workspace.sidebarVisible.toggle() }
-        } label: {
-            Icon(.sidebar, size: 18)
-                .foregroundStyle(.secondary)
-                .frame(width: 28, height: 28)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .help("Mostrar ou ocultar a barra lateral (⌃⌘S)")
         .padding(.leading, 82)
         .padding(.top, 4)
         .ignoresSafeArea()

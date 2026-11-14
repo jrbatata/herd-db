@@ -6,6 +6,23 @@ import HerdCore
 struct SQLEditorView: NSViewRepresentable {
     @Binding var text: String
     @Binding var selection: NSRange
+    var dialect: SQLDialect
+    var onReady: (SQLTextView) -> Void
+    var completions: @MainActor (SQLCompletionContext, String) async -> [SQLCompletionItem]
+
+    init(
+        text: Binding<String>,
+        selection: Binding<NSRange>,
+        dialect: SQLDialect = .postgres,
+        onReady: @escaping (SQLTextView) -> Void = { _ in },
+        completions: @escaping @MainActor (SQLCompletionContext, String) async -> [SQLCompletionItem] = { _, _ in [] }
+    ) {
+        self._text = text
+        self._selection = selection
+        self.dialect = dialect
+        self.onReady = onReady
+        self.completions = completions
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -13,6 +30,7 @@ struct SQLEditorView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let textView = SQLTextView(frame: .zero)
+        textView.dialect = dialect
         configure(textView)
         textView.delegate = context.coordinator
         textView.string = text
@@ -34,7 +52,16 @@ struct SQLEditorView: NSViewRepresentable {
         scrollView.rulersVisible = true
         context.coordinator.ruler = ruler
 
+        let completionController = SQLCompletionController(textView: textView)
+        completionController.request = { [weak coordinator = context.coordinator] context, sql in
+            guard let coordinator else { return [] }
+            return await coordinator.parent.completions(context, sql)
+        }
+        textView.completionController = completionController
+        context.coordinator.completionController = completionController
+
         context.coordinator.highlightNow()
+        onReady(textView)
 
         return scrollView
     }
@@ -43,6 +70,7 @@ struct SQLEditorView: NSViewRepresentable {
         guard let textView = scrollView.documentView as? SQLTextView else { return }
         let coordinator = context.coordinator
         coordinator.parent = self
+        textView.dialect = dialect
 
         if !coordinator.isEditing, textView.string != text {
             textView.string = text
@@ -98,6 +126,7 @@ struct SQLEditorView: NSViewRepresentable {
         var parent: SQLEditorView
         weak var textView: SQLTextView?
         weak var ruler: SQLLineNumberRuler?
+        var completionController: SQLCompletionController?
         var isEditing = false
 
         init(_ parent: SQLEditorView) {
@@ -111,11 +140,17 @@ struct SQLEditorView: NSViewRepresentable {
             highlightNow()
             ruler?.syncToText()
             isEditing = false
+            completionController?.textDidChange()
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView else { return }
             parent.selection = textView.selectedRange()
+            completionController?.selectionDidChange()
+        }
+
+        func textDidEndEditing(_ notification: Notification) {
+            completionController?.endEditing()
         }
 
         func highlightNow() {
@@ -128,6 +163,202 @@ struct SQLEditorView: NSViewRepresentable {
 // MARK: - Text view behaviour
 
 final class SQLTextView: NSTextView {
+    weak var completionController: SQLCompletionController?
+    var dialect: SQLDialect = .postgres
+
+    enum Action {
+        case find, replace, goToLine, indent, unindent, comment, toggleCase, clear, format
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        func add(_ title: String, _ action: Selector, key: String = "", modifiers: NSEvent.ModifierFlags = [.command], enabled: Bool = true) {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            if !key.isEmpty { item.keyEquivalentModifierMask = modifiers }
+            item.target = self
+            item.isEnabled = enabled
+            menu.addItem(item)
+        }
+        add("Desfazer", #selector(undoSQL), key: "z", enabled: undoManager?.canUndo == true)
+        add("Refazer", #selector(redoSQL), key: "z", modifiers: [.command, .shift], enabled: undoManager?.canRedo == true)
+        menu.addItem(.separator())
+        add("Recortar", #selector(cut(_:)), key: "x", enabled: selectedRange().length > 0)
+        add("Copiar", #selector(copy(_:)), key: "c", enabled: selectedRange().length > 0)
+        add("Colar", #selector(paste(_:)), key: "v", enabled: NSPasteboard.general.canReadItem(withDataConformingToTypes: ["public.utf8-plain-text", "public.plain-text"]))
+        add("Selecionar Tudo", #selector(selectAll(_:)), key: "a")
+        menu.addItem(.separator())
+        add("Buscar", #selector(findSQL), key: "f")
+        add("Substituir", #selector(replaceSQL), key: "f", modifiers: [.command, .option])
+        add("Ir para linha/coluna…", #selector(goToLineSQL), key: "g", modifiers: [.control])
+        menu.addItem(.separator())
+        add("Indentar seleção", #selector(indentSQL), key: "]")
+        add("Remover indentação", #selector(unindentSQL), key: "[")
+        add("Comentar/descomentar", #selector(commentSQL), key: "/")
+        add("Alternar maiúsculas/minúsculas", #selector(toggleCaseSQL), key: "u", modifiers: [.control, .shift], enabled: selectedRange().length > 0)
+        add("Limpar consulta", #selector(clearSQL), enabled: !string.isEmpty)
+        menu.addItem(.separator())
+        add("Formatar SQL", #selector(formatSQL), key: "f", modifiers: [.option, .shift], enabled: !string.isEmpty)
+        return menu
+    }
+
+    @objc private func undoSQL() { undoManager?.undo() }
+    @objc private func redoSQL() { undoManager?.redo() }
+
+    func perform(_ action: Action) {
+        switch action {
+        case .find: findSQL()
+        case .replace: replaceSQL()
+        case .goToLine: goToLineSQL()
+        case .indent: indentSQL()
+        case .unindent: unindentSQL()
+        case .comment: commentSQL()
+        case .toggleCase: toggleCaseSQL()
+        case .clear: clearSQL()
+        case .format: formatSQL()
+        }
+    }
+
+    @objc private func findSQL() {
+        let item = NSMenuItem()
+        item.tag = 1
+        performTextFinderAction(item)
+    }
+
+    @objc private func replaceSQL() {
+        let item = NSMenuItem()
+        item.tag = 12
+        performTextFinderAction(item)
+    }
+
+    @objc private func goToLineSQL() {
+        let alert = NSAlert()
+        alert.messageText = "Ir para linha/coluna"
+        alert.addButton(withTitle: "Ir")
+        alert.addButton(withTitle: "Cancelar")
+        let fields = NSStackView()
+        fields.orientation = .vertical
+        fields.spacing = 8
+        let lineField = NSTextField(string: "1")
+        lineField.placeholderString = "Linha"
+        let columnField = NSTextField(string: "1")
+        columnField.placeholderString = "Coluna"
+        fields.addArrangedSubview(lineField)
+        fields.addArrangedSubview(columnField)
+        fields.frame = NSRect(x: 0, y: 0, width: 240, height: 56)
+        alert.accessoryView = fields
+        guard alert.runModal() == .alertFirstButtonReturn,
+              let requestedLine = Int(lineField.stringValue), requestedLine > 0,
+              let requestedColumn = Int(columnField.stringValue), requestedColumn > 0 else { return }
+        let source = string as NSString
+        var position = 0
+        var currentLine = 1
+        while currentLine < requestedLine && position < source.length {
+            let line = source.lineRange(for: NSRange(location: position, length: 0))
+            position = NSMaxRange(line)
+            currentLine += 1
+        }
+        let line = source.lineRange(for: NSRange(location: min(position, source.length), length: 0))
+        let lineEnd = line.location + (source.substring(with: line).trimmingCharacters(in: .newlines) as NSString).length
+        let destination = min(line.location + requestedColumn - 1, lineEnd)
+        window?.makeFirstResponder(self)
+        setSelectedRange(NSRange(location: destination, length: 0))
+        scrollRangeToVisible(selectedRange())
+    }
+
+    @objc private func indentSQL() { transformLines { "    " + $0 } }
+    @objc private func unindentSQL() {
+        transformLines { line in
+            if line.hasPrefix("    ") { return String(line.dropFirst(4)) }
+            if line.hasPrefix("\t") { return String(line.dropFirst()) }
+            return line
+        }
+    }
+    @objc private func commentSQL() {
+        let source = string as NSString
+        let range = source.lineRange(for: selectedRange())
+        let lines = source.substring(with: range).components(separatedBy: "\n")
+        let active = lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        let remove = !active.isEmpty && active.allSatisfy { $0.trimmingCharacters(in: .whitespaces).hasPrefix("--") }
+        transformLines { line in
+            guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return line }
+            if remove, let mark = line.range(of: "--") {
+                var result = line
+                result.removeSubrange(mark)
+                return result
+            }
+            return "-- " + line
+        }
+    }
+    @objc private func toggleCaseSQL() {
+        let range = selectedRange()
+        guard range.length > 0 else { return }
+        let value = (string as NSString).substring(with: range)
+        let changed = value == value.uppercased() ? value.lowercased() : value.uppercased()
+        replace(range, with: changed, selectReplacement: true)
+    }
+    @objc private func clearSQL() {
+        replace(NSRange(location: 0, length: (string as NSString).length), with: "")
+    }
+    @objc private func formatSQL() {
+        let selected = selectedRange()
+        let range = selected.length > 0 ? selected : NSRange(location: 0, length: (string as NSString).length)
+        guard range.length > 0 else { return }
+        let source = (string as NSString).substring(with: range)
+        let formatted = SQLFormatter.format(source, dialect: dialect)
+        replace(range, with: formatted, selectReplacement: selected.length > 0)
+    }
+
+    private func transformLines(_ transform: (String) -> String) {
+        let range = (string as NSString).lineRange(for: selectedRange())
+        let source = (string as NSString).substring(with: range)
+        let result = source.components(separatedBy: "\n").map(transform).joined(separator: "\n")
+        replace(range, with: result, selectReplacement: selectedRange().length > 0)
+    }
+
+    private func replace(_ range: NSRange, with replacement: String, selectReplacement: Bool = false) {
+        guard shouldChangeText(in: range, replacementString: replacement) else { return }
+        textStorage?.replaceCharacters(in: range, with: replacement)
+        didChangeText()
+        let location = range.location + (selectReplacement ? 0 : (replacement as NSString).length)
+        let length = selectReplacement ? (replacement as NSString).length : 0
+        setSelectedRange(NSRange(location: location, length: length))
+        scrollRangeToVisible(selectedRange())
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if let completionController {
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+            if event.keyCode == 49, modifiers.contains(.control) || modifiers.contains(.option) {
+                completionController.requestCompletions(explicit: true)
+                return
+            }
+            if event.keyCode == 96,
+               !modifiers.contains(.command),
+               !modifiers.contains(.option),
+               !modifiers.contains(.control) {
+                completionController.requestCompletions(explicit: true)
+                return
+            }
+            if completionController.handleKey(event) {
+                return
+            }
+        }
+        if event.keyCode == 48 {
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if modifiers.contains(.shift) {
+                unindentSQL()
+                return
+            }
+            if modifiers.isEmpty && selectedRange().length > 0 {
+                indentSQL()
+                return
+            }
+        }
+        super.keyDown(with: event)
+    }
+
     /// Tab insere quatro espaços, como o resto das ferramentas SQL.
     override func insertTab(_ sender: Any?) {
         insertText("    ", replacementRange: selectedRange())

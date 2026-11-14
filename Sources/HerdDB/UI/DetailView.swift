@@ -7,8 +7,10 @@ struct DetailView: View {
 
     var body: some View {
         Group {
-            if let tab = workspace.activeTab {
-                QueryTabView(tab: tab)
+            if workspace.processes.visible && workspace.activeTabID == workspace.processesTabID {
+                DatabaseProcessesView(processes: workspace.processes)
+            } else if let tab = workspace.activeTab {
+                QueryTabView(tab: tab, workspace: workspace)
                     .id(tab.id)
             } else {
                 EmptyWorkspaceView(workspace: workspace)
@@ -59,10 +61,29 @@ struct TopBarView: View {
                     newScriptButton
                 }
             }
+            HStack(spacing: 0) {
+                WindowIconButton(symbol: .sidebarLeft, selected: workspace.sidebarVisible,
+                                 help: "Alternar barra lateral (⌘B)") {
+                    workspace.sidebarVisible.toggle()
+                }
+                WindowIconButton(symbol: .panelBottom, selected: workspace.resultsVisible,
+                                 help: "Alternar resultados (⌘J)") {
+                    workspace.resultsVisible.toggle()
+                }
+                WindowIconButton(symbol: .sidebar, selected: workspace.inspectorVisible,
+                                 help: "Alternar histórico (⌥⌘B)") {
+                    workspace.inspectorVisible.toggle()
+                }
+                WindowIconButton(symbol: .processes, selected: workspace.processes.visible,
+                                 help: "Ver processos de backup, restore e CSV (⌥⌘P)") {
+                    workspace.openProcesses()
+                }
+            }
         }
         .padding(.leading, leadingInset)
         .padding(.trailing, 12)
         .frame(height: 36)
+        .zIndex(10)
     }
 
     private var tabsRow: some View {
@@ -71,22 +92,38 @@ struct TopBarView: View {
                 tabItem(tab)
                     .id(tab.id)
             }
+            if workspace.processes.visible {
+                processesTab
+                    .id(workspace.processesTabID)
+            }
         }
+    }
+
+    private var processesTab: some View {
+        let active = workspace.activeTabID == workspace.processesTabID
+        return HStack(spacing: 7) {
+            Icon(.processes, size: 14)
+            Text("Processos")
+                .font(.system(size: 12, weight: active ? .medium : .regular))
+            Button { workspace.closeProcesses() } label: { Icon(.close, size: 11) }
+                .buttonStyle(.plain)
+                .help("Fechar aba Processos")
+        }
+        .foregroundStyle(active ? Color.primary : Color.secondary)
+        .padding(.horizontal, 10)
+        .frame(height: 27)
+        .background(active ? Color(nsColor: .windowBackgroundColor) : .clear,
+                    in: RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        .onTapGesture { workspace.openProcesses() }
     }
 
     @ViewBuilder
     private var newScriptButton: some View {
         if !workspace.tabs.isEmpty {
-            Button {
+            WindowIconButton(symbol: .plus, selected: false, help: "Novo script (⌘T)") {
                 workspace.newQueryTab()
-            } label: {
-                Icon(.plus, size: 14)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .help("Novo script (⌘T)")
         }
     }
 
@@ -98,7 +135,7 @@ struct TopBarView: View {
             Icon(tab.state.tabSymbol, size: 14, solid: isActive)
                 .foregroundStyle(tab.state.tabColor(isActive: isActive))
 
-            Text(tab.title)
+            Text(tab.title + (tab.hasUnsavedChanges ? " •" : ""))
                 .font(.system(size: 12, weight: isActive ? .medium : .regular))
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -129,11 +166,14 @@ struct TopBarView: View {
         .onTapGesture { workspace.activeTabID = tab.id }
         .contextMenu {
             Button("Fechar") { workspace.closeTab(tab) }
+                .keyboardShortcut("w", modifiers: .command)
             Button("Fechar outras") { workspace.closeOthers(except: tab) }
+                .keyboardShortcut("t", modifiers: [.command, .option])
                 .disabled(workspace.tabs.count < 2)
             Button("Fechar à direita") { workspace.closeTabs(after: tab) }
                 .disabled(workspace.tabs.last?.id == tab.id)
             Button("Fechar todas") { workspace.closeAllTabs() }
+                .keyboardShortcut("w", modifiers: [.command, .shift])
 
             Divider()
 
@@ -146,8 +186,44 @@ struct TopBarView: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(tab.title, forType: .string)
             }
+            .keyboardShortcut("c", modifiers: [.command, .option])
         }
         .onHover { hoveredTab = $0 ? tab.id : nil }
+    }
+}
+
+struct WindowIconButton: View {
+    let symbol: IconSymbol
+    let selected: Bool
+    let help: String
+    var disabled: Bool = false
+    let action: () -> Void
+    @State private var hovering = false
+
+    init(symbol: IconSymbol, selected: Bool, help: String, disabled: Bool = false, action: @escaping () -> Void) {
+        self.symbol = symbol
+        self.selected = selected
+        self.help = help
+        self.disabled = disabled
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Icon(symbol, size: 16, solid: selected)
+                .foregroundStyle(disabled ? Color.secondary.opacity(0.4) : (selected ? Color.primary : Color.secondary))
+                .frame(width: 26, height: 28)
+                .background((hovering && !disabled) ? Color.primary.opacity(0.09) : .clear,
+                            in: RoundedRectangle(cornerRadius: 6))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .accessibilityLabel(help)
+        .help(help)
+        .onHover { inside in
+            hovering = inside
+        }
     }
 }
 
@@ -177,15 +253,16 @@ struct EmptyWorkspaceView: View {
             Button {
                 workspace.newQueryTab()
             } label: {
-                Label { Text("Novo script") } icon: { Icon(.newQuery, size: 14) }
+                HStack(spacing: 7) {
+                    Icon(.newQuery, size: 14)
+                    Text("Novo script")
+                    KeyHint("⌘T", onProminent: true)
+                }
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.regular)
             .padding(.top, 2)
 
-            Text("⌘T")
-                .font(.system(size: 10.5))
-                .foregroundStyle(.tertiary)
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

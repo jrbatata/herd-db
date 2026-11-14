@@ -27,6 +27,17 @@ enum IconSymbol: String, CaseIterable {
     case newConnection
     case sidebar
     case refresh
+    case sidebarLeft
+    case panelBottom
+    case processes
+    case cloudCheck
+    case cloudX
+    case copy
+    case alertCircle
+    case trash
+    case save
+    case download
+    case undo
 
     /// Nome do ícone no IconMCP.
     var iconName: String {
@@ -53,11 +64,33 @@ enum IconSymbol: String, CaseIterable {
         case .newConnection: "database-plus"
         case .sidebar: "sidebar-right"
         case .refresh: "sync"
+        case .sidebarLeft: "sidebar-left"
+        case .panelBottom: "panel-bottom"
+        case .processes: "sync"
+        case .cloudCheck: "cloud-check"
+        case .cloudX: "cloud-x"
+        case .copy: "copy"
+        case .alertCircle: "alert-circle"
+        case .trash: "trash"
+        case .save: "save"
+        case .download: "download"
+        case .undo: "undo"
         }
     }
 
     var outlineSVG: String {
         switch self {
+        case .trash: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4.25h11"/><path d="M5.75 4.25V3a1 1 0 0 1 1-1h2.5a1 1 0 0 1 1 1v1.25"/><path d="M3.75 4.25l.6 8.2a1.5 1.5 0 0 0 1.5 1.3h4.3a1.5 1.5 0 0 0 1.5-1.3l.6-8.2"/><line x1="6.75" y1="7" x2="6.75" y2="11"/><line x1="9.25" y1="7" x2="9.25" y2="11"/></svg>"##
+        case .save: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><path d="M12.25 13.75H3.75a1.5 1.5 0 0 1-1.5-1.5V3.75a1.5 1.5 0 0 1 1.5-1.5h6.6l3.4 3.4v6.6a1.5 1.5 0 0 1-1.5 1.5Z"/><path d="M10.75 13.75V9.25h-5.5v4.5"/><path d="M5.25 2.25v3.25h4.5"/></svg>"##
+        case .download: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 10.5v1.75a1.5 1.5 0 0 0 1.5 1.5h8a1.5 1.5 0 0 0 1.5-1.5V10.5"/><path d="M8 2.25v8"/><path d="m5 7.5 3 3 3-3"/></svg>"##
+        case .undo: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><path d="M2.75 6.25h6.5a4 4 0 1 1 0 8h-3"/><path d="m5.5 3.5-2.75 2.75L5.5 9"/></svg>"##
+        case .sidebarLeft: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><rect x="2.25" y="2.75" width="11.5" height="10.5" rx="2.5"/><line x1="6" y1="2.75" x2="6" y2="13.25"/></svg>"##
+        case .panelBottom: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><rect x="2.25" y="2.75" width="11.5" height="10.5" rx="2.5"/><line x1="2.25" y1="9.5" x2="13.75" y2="9.5"/></svg>"##
+        case .processes: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><path d="M2.25 8a5.75 5.75 0 0 1 9.85-4.05l1.65 1.55M13.75 2.5v3h-3"/><path d="M13.75 8a5.75 5.75 0 0 1-9.85 4.05L2.25 10.5M2.25 13.5v-3h3"/></svg>"##
+        case .cloudCheck: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 11.75H3.8a2.55 2.55 0 0 1-.2-5.1A4.65 4.65 0 0 1 12.4 5.4a3.2 3.2 0 0 1 .1 6.35h-1.2"/><path d="m6 10.3 1.7 1.7 3.1-3.2"/></svg>"##
+        case .cloudX: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 11.75H3.8a2.55 2.55 0 0 1-.2-5.1A4.65 4.65 0 0 1 12.4 5.4a3.2 3.2 0 0 1 .1 6.35h-1.2"/><path d="m6.2 9 3.6 3.6m0-3.6-3.6 3.6"/></svg>"##
+        case .alertCircle: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><line x1="8" y1="5" x2="8" y2="8.5"/><circle cx="8" cy="10.9" r="0.77" fill="#000" stroke="none"/></svg>"##
+        case .copy: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4.5" width="8.5" height="9" rx="1.5"/><path d="M10.5 4.5V3.75A1.5 1.5 0 0 0 9 2.25H3.75A1.5 1.5 0 0 0 2.25 3.75V9A1.5 1.5 0 0 0 3.75 10.5H5"/></svg>"##
         case .plus: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><g><line x1="8" y1="2.75" x2="8" y2="13.25"/><line x1="2.75" y1="8" x2="13.25" y2="8"/></g></svg>"##
         case .close: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><g><line x1="3.75" y1="3.75" x2="12.25" y2="12.25"/><line x1="12.25" y1="3.75" x2="3.75" y2="12.25"/></g></svg>"##
         case .warning: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><g><path d="M9.298 3.992 L12.196 8.998 C12.775 9.998 12.054 11.25 10.898 11.25 L5.102 11.25 C3.946 11.25 3.225 9.998 3.804 8.998 L6.702 3.992 C7.28 2.994 8.72 2.994 9.298 3.992 Z"/><path d="M8.643 6.822 L9.568 8.364 C9.868 8.864 9.508 9.5 8.925 9.5 L7.075 9.5 C6.492 9.5 6.132 8.864 6.432 8.364 L7.357 6.822 C7.648 6.336 8.352 6.336 8.643 6.822 Z"/><line x1="4.5" y1="11.25" x2="2.75" y2="14"/><line x1="11.5" y1="11.25" x2="13.25" y2="14"/></g></svg>"##
@@ -85,6 +118,11 @@ enum IconSymbol: String, CaseIterable {
 
     var solidSVG: String {
         switch self {
+        case .cloudCheck, .cloudX, .copy, .trash, .save, .download, .undo: outlineSVG
+        case .alertCircle: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.253" stroke-linecap="round" stroke-linejoin="round"><path fill="#000" fill-rule="evenodd" stroke="none" d="M14 8A6 6 0 1 1 2 8a6 6 0 0 1 12 0ZM8.63 5a.63.63 0 0 0-1.26 0v3.5a.63.63 0 0 0 1.26 0Zm.17 5.9a.8.8 0 1 0-1.6 0 .8.8 0 0 0 1.6 0Z"/></svg>"##
+        case .sidebarLeft: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.253" stroke-linecap="round" stroke-linejoin="round"><rect x="2.25" y="2.75" width="11.5" height="10.5" rx="2.5"/><path d="M4.75 2.75H6v10.5H4.75a2.5 2.5 0 0 1-2.5-2.5v-5.5a2.5 2.5 0 0 1 2.5-2.5Z" fill="#000"/></svg>"##
+        case .panelBottom: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.253" stroke-linecap="round" stroke-linejoin="round"><rect x="2.25" y="2.75" width="11.5" height="10.5" rx="2.5"/><path d="M2.25 9.5h11.5v1.25a2.5 2.5 0 0 1-2.5 2.5h-6.5a2.5 2.5 0 0 1-2.5-2.5Z" fill="#000"/></svg>"##
+        case .processes: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.25 8a5.75 5.75 0 0 1 9.85-4.05l1.65 1.55M13.75 2.5v3h-3"/><path d="M13.75 8a5.75 5.75 0 0 1-9.85 4.05L2.25 10.5M2.25 13.5v-3h3"/></svg>"##
         case .plus: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.253" stroke-linecap="round" stroke-linejoin="round"><g><line x1="8" y1="2.75" x2="8" y2="13.25"/><line x1="2.75" y1="8" x2="13.25" y2="8"/></g></svg>"##
         case .close: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.253" stroke-linecap="round" stroke-linejoin="round"><g><line x1="3.75" y1="3.75" x2="12.25" y2="12.25"/><line x1="12.25" y1="3.75" x2="3.75" y2="12.25"/></g></svg>"##
         case .warning: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.253" stroke-linecap="round" stroke-linejoin="round"><g><path d="M9.298 3.992 L12.196 8.998 C12.775 9.998 12.054 11.25 10.898 11.25 L5.102 11.25 C3.946 11.25 3.225 9.998 3.804 8.998 L6.702 3.992 C7.28 2.994 8.72 2.994 9.298 3.992 Z M9.001 8.638 L8.134 7.192 L8.068 7.115 L8.038 7.099 L8 7.093 L7.962 7.099 L7.932 7.115 L7.866 7.192 L6.999 8.638 L6.962 8.735 L6.962 8.77 L6.975 8.806 L7 8.837 L7.03 8.855 L7.132 8.873 L8.868 8.873 L8.97 8.855 L9 8.837 L9.025 8.806 L9.038 8.77 L9.038 8.735 Z M8.768 6.07 L8.546 5.948 L8.439 5.902 L8.347 5.88 L8.102 5.839 L7.934 5.834 L7.898 5.839 L7.653 5.88 L7.454 5.948 L7.22 6.077 L7.06 6.208 L6.884 6.411 L6.85 6.454 L6.82 6.5 L5.895 8.042 L5.846 8.143 L5.748 8.401 L5.722 8.491 L5.708 8.624 L5.709 8.883 L5.723 9.011 L5.747 9.094 L5.833 9.333 L5.915 9.488 L5.936 9.515 L6.096 9.712 L6.258 9.853 L6.491 9.993 L6.692 10.067 L6.963 10.116 L7.009 10.123 L7.075 10.127 L8.925 10.127 L9.037 10.116 L9.308 10.067 L9.39 10.047 L9.52 9.987 L9.742 9.853 L9.837 9.782 L9.904 9.712 L10.064 9.515 L10.15 9.374 L10.167 9.333 L10.253 9.094 L10.291 8.883 L10.292 8.622 L10.252 8.401 L10.154 8.143 L10.14 8.109 L10.105 8.042 L9.18 6.5 L9.116 6.411 L8.94 6.208 L8.886 6.154 Z" fill="#000" fill-rule="evenodd" stroke="none"/><path d="M9.298 3.992 L12.196 8.998 C12.775 9.998 12.054 11.25 10.898 11.25 L5.102 11.25 C3.946 11.25 3.225 9.998 3.804 8.998 L6.702 3.992 C7.28 2.994 8.72 2.994 9.298 3.992 Z" fill="none"/><line x1="4.5" y1="11.25" x2="2.75" y2="14"/><line x1="11.5" y1="11.25" x2="13.25" y2="14"/></g></svg>"##
