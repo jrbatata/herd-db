@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag da release (ex: v0.1.0)"
+        required: true
+        default: "v0.1.0"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Release macOS App
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Empacotar aplicativo (.app, .dmg, .zip e SHA256SUMS)
+        run: ./scripts/package-release.sh
+
+      - name: Publicar no GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.dmg dist/*.zip dist/SHA256SUMS.txt --clobber
+          else
+            gh release create "$TAG" dist/*.dmg dist/*.zip dist/SHA256SUMS.txt \
+              --title "herd ${TAG#v}" \
+              --generate-notes
+          fi
