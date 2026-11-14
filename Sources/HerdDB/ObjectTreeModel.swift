@@ -36,13 +36,13 @@ struct TreeNode: Identifiable, Hashable, Sendable {
 
     var isSelectable: Bool { kind != .error }
 
-    var symbolName: SolarSymbol {
+    var symbolName: IconSymbol {
         switch kind {
         case .connection: .database
         case .database: .database
         case .schema: .folder
         case .tablesFolder, .table: .table
-        case .viewsFolder, .view: .eye
+        case .viewsFolder, .view: .view
         case .column:
             if column?.isPrimaryKey == true { .key }
             else if column?.references != nil { .link }

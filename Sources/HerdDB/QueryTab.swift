@@ -7,13 +7,21 @@ enum QueryRunState {
     case running
     case success(QueryResult)
     case failure(String)
+    case cancelled
+}
+
+enum QueryExecutionScope {
+    /// Selection when there is one, otherwise the whole editor.
+    case automatic
+    /// Selection when there is one, otherwise the command under the cursor.
+    case selection
 }
 
 struct QueryContext: Sendable {
     var connectionID: UUID
+    var connectionName: String
     var database: String
     var schema: String?
-    var label: String
 }
 
 @MainActor
@@ -21,13 +29,16 @@ struct QueryContext: Sendable {
 final class QueryTab: Identifiable {
     let id = UUID()
     let connectionID: UUID
-    let database: String
+    let connectionName: String
     let schema: String?
-    let contextLabel: String
 
+    /// The database can be changed in the tab's toolbar.
+    var database: String
     var title: String
     var sql: String
     var state: QueryRunState = .idle
+    /// UTF-16 selection reported by the editor.
+    var selection: NSRange = NSRange(location: 0, length: 0)
 
     @ObservationIgnored private var task: Task<Void, Never>?
 
@@ -35,9 +46,9 @@ final class QueryTab: Identifiable {
         self.title = title
         self.sql = sql
         self.connectionID = context.connectionID
+        self.connectionName = context.connectionName
         self.database = context.database
         self.schema = context.schema
-        self.contextLabel = context.label
     }
 
     var isRunning: Bool {
@@ -45,8 +56,16 @@ final class QueryTab: Identifiable {
         return false
     }
 
-    func run(app: AppModel) {
+    var hasText: Bool {
+        !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    // MARK: - Running
+
+    func run(app: AppModel, scope: QueryExecutionScope = .automatic) {
         guard !isRunning else { return }
+
+        let sql = textToRun(scope: scope)
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         guard let config = app.connections.connection(id: connectionID) else {
@@ -55,19 +74,85 @@ final class QueryTab: Identifiable {
         }
 
         let driver = app.drivers.driver(for: config)
-        let sql = self.sql
-        let database = self.database
+        let database = self.database.trimmingCharacters(in: .whitespacesAndNewlines)
+        let targetDatabase = database.isEmpty ? config.maintenanceDatabase : database
+        let started = Date()
         state = .running
 
         task = Task { [weak self] in
             do {
-                let result = try await driver.run(sql, database: database)
-                guard !Task.isCancelled else { return }
-                self?.state = .success(result)
+                let result = try await driver.run(sql, database: targetDatabase)
+                guard let self else { return }
+                guard !Task.isCancelled else {
+                    self.state = .cancelled
+                    return
+                }
+                self.state = .success(result)
+                app.history.record(
+                    connectionID: self.connectionID,
+                    database: targetDatabase,
+                    sql: sql,
+                    duration: result.elapsed,
+                    rowCount: result.rows.count
+                )
+            } catch is CancellationError {
+                self?.state = .cancelled
             } catch {
-                guard !Task.isCancelled else { return }
-                self?.state = .failure(error.localizedDescription)
+                guard let self else { return }
+                guard !Task.isCancelled else {
+                    self.state = .cancelled
+                    return
+                }
+                self.state = .failure(error.localizedDescription)
+                app.history.record(
+                    connectionID: self.connectionID,
+                    database: targetDatabase,
+                    sql: sql,
+                    duration: Date().timeIntervalSince(started),
+                    errorMessage: error.localizedDescription
+                )
             }
         }
+    }
+
+    func cancel() {
+        task?.cancel()
+    }
+
+    // MARK: - Scope
+
+    private func textToRun(scope: QueryExecutionScope) -> String {
+        let selected = selectedSQL
+        if !selected.isEmpty { return selected }
+
+        switch scope {
+        case .automatic:
+            return sql
+        case .selection:
+            return statementUnderCursor() ?? sql
+        }
+    }
+
+    private var selectedSQL: String {
+        guard selection.length > 0 else { return "" }
+        let length = (sql as NSString).length
+        let location = min(max(selection.location, 0), length)
+        let range = NSRange(location: location, length: min(selection.length, max(0, length - location)))
+        guard range.length > 0, let swiftRange = Range(range, in: sql) else { return "" }
+        return String(sql[swiftRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func statementUnderCursor() -> String? {
+        let statements = SQLStatementSplitter.statements(in: sql)
+        guard !statements.isEmpty else { return nil }
+
+        let location = selection.location
+        if let hit = statements.first(where: { NSLocationInRange(location, $0.range) }) {
+            return hit.text
+        }
+        if location > 0, let hit = statements.first(where: { NSLocationInRange(location - 1, $0.range) }) {
+            return hit.text
+        }
+        return nil
     }
 }

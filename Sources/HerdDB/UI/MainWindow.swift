@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import HerdCore
 
@@ -15,6 +16,11 @@ extension FocusedValues {
 struct MainWindow: View {
     @Environment(AppModel.self) private var app
     @State private var workspace: WorkspaceState
+    @AppStorage("sidebarWidth") private var sidebarWidth: Double = 270
+    @State private var dragStartWidth: Double?
+
+    /// Espaço reservado à esquerda para os semáforos + botão da sidebar.
+    private let controlsInset: CGFloat = 128
 
     init(app: AppModel) {
         _workspace = State(initialValue: WorkspaceState(app: app))
@@ -23,17 +29,37 @@ struct MainWindow: View {
     var body: some View {
         @Bindable var workspace = workspace
 
-        NavigationSplitView {
-            SidebarView(workspace: workspace)
-                .navigationSplitViewColumnWidth(min: 220, ideal: 280, max: 420)
-        } detail: {
-            DetailView(workspace: workspace)
+        ZStack(alignment: .topLeading) {
+            VisualEffectBackground(material: .sidebar)
+                .ignoresSafeArea()
+
+            HStack(spacing: 0) {
+                if workspace.sidebarVisible {
+                    SidebarView(workspace: workspace)
+                        .frame(width: sidebarWidth)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    resizeHandle
+                }
+
+                VStack(spacing: 0) {
+                    TopBarView(
+                        workspace: workspace,
+                        leadingInset: workspace.sidebarVisible ? 4 : controlsInset
+                    )
+                    DetailView(workspace: workspace)
+                        .padding(.trailing, 8)
+                        .padding(.bottom, 8)
+                        .padding(.leading, workspace.sidebarVisible ? 0 : 8)
+                }
+            }
+            .ignoresSafeArea()
+
+            sidebarToggle
         }
+        .background(WindowConfigurator())
+        .focusEffectDisabled()
         .navigationTitle(workspace.windowTitle)
-        .toolbarTitleDisplayMode(.inline)
-        .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 960, minHeight: 600)
-        .toolbar { toolbar }
         .focusedSceneValue(\.workspace, workspace)
         .sheet(item: $workspace.connectionEditor) { editor in
             ConnectionSheet(editor: editor, workspace: workspace)
@@ -56,22 +82,38 @@ struct MainWindow: View {
         }
     }
 
-    @ToolbarContentBuilder
-    private var toolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            Button {
-                workspace.newQueryTab()
-            } label: {
-                Label("Nova consulta", systemImage: "plus.bubble")
-            }
-            .help("Nova consulta (⌘T)")
-
-            Button {
-                workspace.tree.reloadAll()
-            } label: {
-                Label("Atualizar", systemImage: "arrow.clockwise")
-            }
-            .help("Atualizar árvore (⌘R)")
+    private var sidebarToggle: some View {
+        Button {
+            withAnimation(.snappy(duration: 0.25)) { workspace.sidebarVisible.toggle() }
+        } label: {
+            Icon(.sidebar, size: 18)
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .help("Mostrar ou ocultar a barra lateral (⌃⌘S)")
+        .padding(.leading, 82)
+        .padding(.top, 4)
+        .ignoresSafeArea()
+    }
+
+    private var resizeHandle: some View {
+        Color.clear
+            .frame(width: 6)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        let start = dragStartWidth ?? sidebarWidth
+                        dragStartWidth = start
+                        sidebarWidth = min(420, max(220, start + value.translation.width))
+                    }
+                    .onEnded { _ in dragStartWidth = nil }
+            )
+            .padding(.horizontal, -3)
     }
 }

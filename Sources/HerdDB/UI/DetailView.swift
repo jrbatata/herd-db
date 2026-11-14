@@ -5,90 +5,124 @@ struct DetailView: View {
     @Bindable var workspace: WorkspaceState
 
     var body: some View {
-        VStack(spacing: 0) {
-            if workspace.tabs.isEmpty {
-                EmptyWorkspaceView(workspace: workspace)
+        Group {
+            if let tab = workspace.activeTab {
+                QueryTabView(tab: tab)
+                    .id(tab.id)
             } else {
-                TabBarView(workspace: workspace)
-                Divider()
-                if let tab = workspace.activeTab {
-                    QueryTabView(tab: tab)
-                        .id(tab.id)
-                } else {
-                    EmptyWorkspaceView(workspace: workspace)
-                }
+                EmptyWorkspaceView(workspace: workspace)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.06), radius: 8, y: 1)
     }
 }
 
-struct TabBarView: View {
+/// Barra superior (na altura dos semáforos) com as abas abertas.
+struct TopBarView: View {
     @Bindable var workspace: WorkspaceState
+    let leadingInset: CGFloat
     @State private var hoveredTab: UUID?
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 2) {
-                ForEach(workspace.tabs) { tab in
-                    tabItem(tab)
+        HStack(spacing: 4) {
+            ViewThatFits(in: .horizontal) {
+                // Poucas abas: tudo cabe e o botão de novo script fica colado na última.
+                HStack(spacing: 4) {
+                    tabsRow
+                    newScriptButton
+                    Spacer(minLength: 0)
                 }
 
-                Button {
-                    workspace.newQueryTab()
-                } label: {
-                    SolarIcon(.plus, size: 14)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
+                // Muitas abas: a faixa de abas rola e o botão fica fixo à direita.
+                HStack(spacing: 4) {
+                    ScrollViewReader { reader in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            tabsRow
+                        }
+                        .onChange(of: workspace.activeTabID) { _, id in
+                            guard let id else { return }
+                            withAnimation(.snappy(duration: 0.2)) { reader.scrollTo(id, anchor: .center) }
+                        }
+                        .onChange(of: workspace.tabs.count) { _, _ in
+                            guard let id = workspace.activeTabID else { return }
+                            withAnimation(.snappy(duration: 0.2)) { reader.scrollTo(id, anchor: .trailing) }
+                        }
+                    }
+                    newScriptButton
                 }
-                .buttonStyle(.plain)
-                .help("Nova consulta (⌘T)")
-                .padding(.leading, 4)
             }
-            .padding(.vertical, 5)
         }
-        .padding(.leading, 6)
+        .padding(.leading, leadingInset)
+        .padding(.trailing, 12)
         .frame(height: 36)
-        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var tabsRow: some View {
+        HStack(spacing: 4) {
+            ForEach(workspace.tabs) { tab in
+                tabItem(tab)
+                    .id(tab.id)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var newScriptButton: some View {
+        if !workspace.tabs.isEmpty {
+            Button {
+                workspace.newQueryTab()
+            } label: {
+                Icon(.plus, size: 14)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Novo script (⌘T)")
+        }
     }
 
     private func tabItem(_ tab: QueryTab) -> some View {
         let isActive = workspace.activeTabID == tab.id
         let isHovered = hoveredTab == tab.id
 
-        return HStack(spacing: 6) {
-            SolarIcon(tab.state.isFailure ? .warning : .code, size: 13)
-                .foregroundStyle(tab.state.isFailure ? Color.red : (isActive ? Color.secondary : Color.secondary.opacity(0.7)))
+        return HStack(spacing: 7) {
+            Icon(tab.state.tabSymbol, size: 14, solid: isActive)
+                .foregroundStyle(tab.state.tabColor(isActive: isActive))
 
             Text(tab.title)
-                .font(.system(size: 11.5, weight: isActive ? .medium : .regular))
+                .font(.system(size: 12, weight: isActive ? .medium : .regular))
                 .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .foregroundStyle(isActive ? Color.primary : Color.secondary)
 
             Button {
                 workspace.closeTab(tab)
             } label: {
-                SolarIcon(.close, size: 11)
-                    .frame(width: 14, height: 14)
+                Icon(.close, size: 11)
+                    .frame(width: 16, height: 16)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .opacity(isActive || isHovered ? 1 : 0)
         }
-        .padding(.leading, 9)
-        .padding(.trailing, 5)
-        .frame(height: 26)
+        .padding(.leading, 10)
+        .padding(.trailing, 6)
+        .frame(minWidth: 120, maxWidth: 180)
+        .frame(height: 27)
         .background {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isActive ? Color(nsColor: .controlBackgroundColor) : (isHovered ? Color.primary.opacity(0.05) : .clear))
-                .shadow(color: isActive ? .black.opacity(0.07) : .clear, radius: 1, y: 1)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(isActive ? Color(nsColor: .separatorColor) : .clear, lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isActive ? Color(nsColor: .windowBackgroundColor) : (isHovered ? Color.primary.opacity(0.06) : .clear))
+                .shadow(color: isActive ? .black.opacity(0.08) : .clear, radius: 2, y: 1)
         }
         .contentShape(Rectangle())
         .onTapGesture { workspace.activeTabID = tab.id }
@@ -100,23 +134,39 @@ struct EmptyWorkspaceView: View {
     let workspace: WorkspaceState
 
     var body: some View {
-        VStack(spacing: 10) {
-            SolarIcon(.database, size: 46)
-                .foregroundStyle(.tertiary)
-
-            Text("Sem aba aberta")
-                .font(.system(size: 15, weight: .semibold))
-
-            Text("Selecione uma tabela na barra lateral ou abra uma consulta.")
-                .font(.system(size: 12))
+        VStack(spacing: 14) {
+            Icon(.newQuery, size: 30)
                 .foregroundStyle(.secondary)
+                .frame(width: 72, height: 72)
+                .background {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(Color.primary.opacity(0.05))
+                }
 
-            Button("Nova consulta") {
-                workspace.newQueryTab()
+            VStack(spacing: 5) {
+                Text("Nenhum script aberto")
+                    .font(.system(size: 15, weight: .semibold))
+
+                Text("Abra uma tabela na barra lateral ou comece um novo script.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
-            .controlSize(.small)
-            .padding(.top, 4)
+
+            Button {
+                workspace.newQueryTab()
+            } label: {
+                Label { Text("Novo script") } icon: { Icon(.newQuery, size: 14) }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .padding(.top, 2)
+
+            Text("⌘T")
+                .font(.system(size: 10.5))
+                .foregroundStyle(.tertiary)
         }
+        .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -125,5 +175,22 @@ private extension QueryRunState {
     var isFailure: Bool {
         if case .failure = self { return true }
         return false
+    }
+
+    var isCancelled: Bool {
+        if case .cancelled = self { return true }
+        return false
+    }
+
+    var tabSymbol: IconSymbol {
+        if isFailure { return .warning }
+        if isCancelled { return .closeCircle }
+        return .newQuery
+    }
+
+    func tabColor(isActive: Bool) -> Color {
+        if isFailure { return .red }
+        if isCancelled { return .secondary }
+        return isActive ? Color.primary.opacity(0.75) : Color.secondary
     }
 }

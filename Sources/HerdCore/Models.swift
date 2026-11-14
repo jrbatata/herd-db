@@ -164,12 +164,21 @@ public struct QueryResult: Sendable, Equatable {
     public var rows: [[String?]]
     public var elapsed: TimeInterval
     public var message: String?
+    /// How many commands the script contained.
+    public var statementCount: Int
 
-    public init(columns: [String] = [], rows: [[String?]] = [], elapsed: TimeInterval = 0, message: String? = nil) {
+    public init(
+        columns: [String] = [],
+        rows: [[String?]] = [],
+        elapsed: TimeInterval = 0,
+        message: String? = nil,
+        statementCount: Int = 1
+    ) {
         self.columns = columns
         self.rows = rows
         self.elapsed = elapsed
         self.message = message
+        self.statementCount = statementCount
     }
 
     public var isEmptyResultSet: Bool { columns.isEmpty }

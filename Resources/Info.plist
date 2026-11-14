@@ -10,10 +10,12 @@
     <string>com.juniorsilva.herd-db</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleName</key>
-    <string>herd-db</string>
+    <string>herd</string>
     <key>CFBundleDisplayName</key>
-    <string>herd-db</string>
+    <string>herd</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -29,7 +31,7 @@
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>herd-db conecta aos seus servidores PostgreSQL na rede local e na internet.</string>
+    <string>herd conecta aos seus servidores PostgreSQL na rede local e na internet.</string>
     <key>NSHumanReadableCopyright</key>
     <string>Uso interno.</string>
 </dict>

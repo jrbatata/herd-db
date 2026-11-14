@@ -8,9 +8,9 @@ struct QueryResultsView: View {
         switch state {
         case .idle:
             placeholder(
-                icon: .text,
+                icon: .table,
                 title: "Sem resultados",
-                subtitle: "Execute a consulta com ⌘↵."
+                subtitle: "Execute o script com ⌘↵."
             )
 
         case .running:
@@ -19,13 +19,23 @@ struct QueryResultsView: View {
                 Text("Executando…")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                Text("⌘. para cancelar")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        case .cancelled:
+            placeholder(
+                icon: .stop,
+                title: "Execução cancelada",
+                subtitle: "Use ⌘↵ para executar de novo."
+            )
 
         case .failure(let message):
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("Falha ao executar", systemImage: "exclamationmark.triangle.fill")
+                    Label { Text("Falha ao executar") } icon: { Icon(.warning, size: 14) }
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.red)
                     Text(message)
@@ -52,9 +62,9 @@ struct QueryResultsView: View {
         }
     }
 
-    private func placeholder(icon: SolarSymbol, title: String, subtitle: String) -> some View {
+    private func placeholder(icon: IconSymbol, title: String, subtitle: String) -> some View {
         VStack(spacing: 8) {
-            SolarIcon(icon, size: 30)
+            Icon(icon, size: 30)
                 .foregroundStyle(.tertiary)
             Text(title)
                 .font(.system(size: 12, weight: .medium))
@@ -88,25 +98,29 @@ private struct ResultTable: View {
     }
 
     var body: some View {
-        ScrollView([.horizontal, .vertical]) {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                Section {
-                    ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                        dataRow(index: index, row: row)
-                    }
-
-                    if result.rows.count > displayLimit {
-                        Text("Mostrando \(displayLimit) de \(result.rows.count) linhas · paginação chega na fase 4.")
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                    }
-                } header: {
+        GeometryReader { proxy in
+            ScrollView(.horizontal) {
+                VStack(alignment: .leading, spacing: 0) {
                     headerRow
+
+                    ScrollView(.vertical) {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                                dataRow(index: index, row: row)
+                            }
+
+                            if result.rows.count > displayLimit {
+                                Text("Mostrando \(displayLimit) de \(result.rows.count) linhas. A paginação chega na fase 4.")
+                                    .font(.system(size: 10.5))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                            }
+                        }
+                    }
                 }
+                .frame(minWidth: proxy.size.width, maxHeight: .infinity, alignment: .topLeading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(nsColor: .textBackgroundColor))
     }
@@ -133,6 +147,7 @@ private struct ResultTable: View {
                     }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: 26)
         .background(Color(nsColor: .controlBackgroundColor))
         .overlay(alignment: .bottom) {
@@ -163,6 +178,7 @@ private struct ResultTable: View {
                     .help(value ?? "NULL")
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: 22)
         .background(index.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(0.028))
         .overlay(alignment: .bottom) {

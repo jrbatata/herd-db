@@ -22,6 +22,7 @@ final class WorkspaceState {
 
     var tabs: [QueryTab] = []
     var activeTabID: UUID?
+    var sidebarVisible = true
     var connectionEditor: ConnectionEditorState?
     var alert: AlertMessage?
 
@@ -37,7 +38,7 @@ final class WorkspaceState {
         return tabs.first { $0.id == activeTabID }
     }
 
-    var windowTitle: String { activeTab?.title ?? "herd-db" }
+    var windowTitle: String { activeTab?.title ?? "herd" }
 
     // MARK: - Tabs
 
@@ -46,7 +47,7 @@ final class WorkspaceState {
         guard let context = context ?? defaultContext() else {
             alert = AlertMessage(
                 title: "Nenhuma conexão",
-                message: "Crie uma conexão antes de abrir uma consulta."
+                message: "Crie uma conexão antes de abrir um script."
             )
             return nil
         }
@@ -71,9 +72,9 @@ final class WorkspaceState {
         let sql = dialect.limitedSelect(schema: node.schema, table: table, limit: 100)
         let context = QueryContext(
             connectionID: config.id,
+            connectionName: config.name,
             database: database,
-            schema: node.schema,
-            label: contextLabel(config: config, database: database, schema: node.schema)
+            schema: node.schema
         )
         newQueryTab(context: context, sql: sql, title: node.title)
     }
@@ -83,9 +84,9 @@ final class WorkspaceState {
         let database = node.database ?? config.maintenanceDatabase
         let context = QueryContext(
             connectionID: config.id,
+            connectionName: config.name,
             database: database,
-            schema: node.schema,
-            label: contextLabel(config: config, database: database, schema: node.schema)
+            schema: node.schema
         )
         newQueryTab(context: context)
     }
@@ -94,15 +95,16 @@ final class WorkspaceState {
         let database = config.maintenanceDatabase
         let context = QueryContext(
             connectionID: config.id,
+            connectionName: config.name,
             database: database,
-            schema: nil,
-            label: contextLabel(config: config, database: database, schema: nil)
+            schema: nil
         )
         newQueryTab(context: context)
     }
 
     func closeTab(_ tab: QueryTab) {
         guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        tab.cancel()
         tabs.remove(at: index)
         if activeTabID == tab.id {
             if tabs.indices.contains(index) {
@@ -122,37 +124,33 @@ final class WorkspaceState {
 
     // MARK: - Query
 
-    func runActiveTab() {
-        activeTab?.run(app: app)
+    func runActiveTab(scope: QueryExecutionScope = .automatic) {
+        activeTab?.run(app: app, scope: scope)
+    }
+
+    func cancelActiveTab() {
+        activeTab?.cancel()
     }
 
     func defaultContext() -> QueryContext? {
-        if let id = tree.selection, let node = tree.node(withID: id), node.kind == .table || node.kind == .view {
-            guard
-                let config = app.connections.connection(id: node.connectionID),
-                let database = node.database
-            else { return nil }
+        if let id = tree.selection,
+           let node = tree.node(withID: id),
+           let config = app.connections.connection(id: node.connectionID) {
             return QueryContext(
                 connectionID: config.id,
-                database: database,
-                schema: node.schema,
-                label: contextLabel(config: config, database: database, schema: node.schema)
+                connectionName: config.name,
+                database: node.database ?? config.maintenanceDatabase,
+                schema: node.schema
             )
         }
 
         guard let config = app.connections.connections.first else { return nil }
         return QueryContext(
             connectionID: config.id,
+            connectionName: config.name,
             database: config.maintenanceDatabase,
-            schema: nil,
-            label: contextLabel(config: config, database: config.maintenanceDatabase, schema: nil)
+            schema: nil
         )
-    }
-
-    private func contextLabel(config: ConnectionConfig, database: String, schema: String?) -> String {
-        var parts = [config.name, database]
-        if let schema, !schema.isEmpty { parts.append(schema) }
-        return parts.joined(separator: " · ")
     }
 
     private func engineDialect(_ engine: DatabaseEngine) -> SQLDialect {

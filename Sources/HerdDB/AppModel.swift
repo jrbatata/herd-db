@@ -8,11 +8,13 @@ import Observation
 final class AppModel {
     let connections: ConnectionStore
     let drivers: DriverRegistry
+    let history: QueryHistoryStore
 
     init() {
         let connections = ConnectionStore()
         self.connections = connections
         self.drivers = DriverRegistry(store: connections)
+        self.history = QueryHistoryStore()
     }
 
     func save(_ config: ConnectionConfig, password: String?) throws {

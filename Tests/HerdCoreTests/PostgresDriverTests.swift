@@ -84,10 +84,154 @@ final class PostgresDriverTests: XCTestCase {
         let cafe = try XCTUnwrap(result.rows.first { $0[0] == "Café" })
         XCTAssertNil(cafe[1])
 
+        let binaries = try await driver.run(
+            #"SELECT ''::bytea AS empty, '\x00ff'::bytea AS data, NULL::bytea AS missing;"#,
+            database: "postgres"
+        )
+        XCTAssertEqual(binaries.rows[0][0], "")
+        XCTAssertEqual(binaries.rows[0][1], "\\x00ff")
+        XCTAssertNil(binaries.rows[0][2])
+
         let failure = await XCTAssertThrowsErrorAsync {
             _ = try await driver.run("SELECT * FROM \(schema).does_not_exist;", database: "postgres")
         }
         XCTAssertNotNil(failure)
+    }
+
+    // MARK: - Phase 2: scripts and cancellation
+
+    func testRunsScriptSequentiallyAndReturnsLastResultSet() async throws {
+        guard ProcessInfo.processInfo.environment["HERD_TEST_PG"] == "1" else {
+            throw XCTSkip("Set HERD_TEST_PG=1 to run against the local PostgreSQL server.")
+        }
+
+        let driver = try await makeDriver()
+        addTeardownBlock { await driver.shutdown() }
+
+        let result = try await driver.run(
+            """
+            SELECT 1 AS first;
+            SELECT 2 AS second;
+            """,
+            database: "postgres"
+        )
+
+        XCTAssertEqual(result.statementCount, 2)
+        XCTAssertEqual(result.columns, ["second"])
+        XCTAssertEqual(result.rows, [["2"]])
+        XCTAssertEqual(result.message, "2 comandos executados")
+    }
+
+    func testRunsCommandsWithoutResultSet() async throws {
+        guard ProcessInfo.processInfo.environment["HERD_TEST_PG"] == "1" else {
+            throw XCTSkip("Set HERD_TEST_PG=1 to run against the local PostgreSQL server.")
+        }
+
+        let driver = try await makeDriver()
+        addTeardownBlock { await driver.shutdown() }
+
+        let schema = "herd_script_\(UUID().uuidString.prefix(8).lowercased())"
+        addTeardownBlock {
+            _ = try? await driver.run("DROP SCHEMA IF EXISTS \(schema) CASCADE;", database: "postgres")
+        }
+
+        let result = try await driver.run(
+            """
+            CREATE SCHEMA \(schema);
+            CREATE TABLE \(schema).items (id int);
+            INSERT INTO \(schema).items VALUES (1), (2);
+            """,
+            database: "postgres"
+        )
+
+        XCTAssertEqual(result.statementCount, 3)
+        XCTAssertTrue(result.isEmptyResultSet)
+        XCTAssertEqual(result.message, "3 comandos executados")
+
+        let counted = try await driver.run("SELECT count(*) AS total FROM \(schema).items;", database: "postgres")
+        XCTAssertEqual(counted.rows, [["2"]])
+    }
+
+    func testScriptErrorNamesTheFailingCommand() async throws {
+        guard ProcessInfo.processInfo.environment["HERD_TEST_PG"] == "1" else {
+            throw XCTSkip("Set HERD_TEST_PG=1 to run against the local PostgreSQL server.")
+        }
+
+        let driver = try await makeDriver()
+        addTeardownBlock { await driver.shutdown() }
+
+        let error = await XCTAssertThrowsErrorAsync {
+            _ = try await driver.run(
+                "SELECT 1; SELECT * FROM herd_table_that_does_not_exist;",
+                database: "postgres"
+            )
+        }
+        let message = try XCTUnwrap(error?.localizedDescription)
+        XCTAssertTrue(message.hasPrefix("Comando 2 de 2:"), message)
+        XCTAssertTrue(message.contains("herd_table_that_does_not_exist"), message)
+    }
+
+    func testContinuesAfterLargeResultSet() async throws {
+        guard ProcessInfo.processInfo.environment["HERD_TEST_PG"] == "1" else {
+            throw XCTSkip("Set HERD_TEST_PG=1 to run against the local PostgreSQL server.")
+        }
+
+        let driver = try await makeDriver()
+        addTeardownBlock { await driver.shutdown() }
+
+        let result = try await driver.run(
+            "SELECT generate_series(1, 25000) AS n; SELECT 'done' AS status;",
+            database: "postgres"
+        )
+
+        XCTAssertEqual(result.statementCount, 2)
+        XCTAssertEqual(result.columns, ["status"])
+        XCTAssertEqual(result.rows, [["done"]])
+
+        let after = try await driver.run("SELECT 1 AS ok;", database: "postgres")
+        XCTAssertEqual(after.rows, [["1"]])
+    }
+
+    func testCancelKeepsTheConnectionUsable() async throws {
+        guard ProcessInfo.processInfo.environment["HERD_TEST_PG"] == "1" else {
+            throw XCTSkip("Set HERD_TEST_PG=1 to run against the local PostgreSQL server.")
+        }
+
+        let driver = try await makeDriver()
+        addTeardownBlock { await driver.shutdown() }
+
+        let start = Date()
+        let task = Task {
+            try await driver.run("SELECT pg_sleep(30);", database: "postgres")
+        }
+
+        try await Task.sleep(for: .milliseconds(700))
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            XCTFail("A execução deveria ter sido cancelada.")
+        } catch is CancellationError {
+            // expected
+        } catch {
+            XCTFail("Erro inesperado ao cancelar: \(error)")
+        }
+
+        XCTAssertLessThan(Date().timeIntervalSince(start), 10)
+
+        let after = try await driver.run("SELECT 42 AS answer;", database: "postgres")
+        XCTAssertEqual(after.rows, [["42"]])
+    }
+
+    private func makeDriver() async throws -> PostgresDriver {
+        let config = ConnectionConfig(
+            name: "local",
+            host: "127.0.0.1",
+            port: 5432,
+            username: ProcessInfo.processInfo.environment["PGUSER"] ?? NSUserName(),
+            database: "postgres"
+        )
+        return PostgresDriver(config: config, password: nil)
     }
 }
 

@@ -7,11 +7,10 @@ struct SidebarView: View {
     @Bindable var workspace: WorkspaceState
 
     var body: some View {
-        @Bindable var tree = workspace.tree
-
         VStack(spacing: 0) {
+            topActions
+            filterField
             header
-            Divider()
 
             if app.connections.connections.isEmpty {
                 emptyState
@@ -21,10 +20,52 @@ struct SidebarView: View {
                 treeList
             }
 
-            Divider()
             footer
         }
-        .searchable(text: $tree.filter, placement: .sidebar, prompt: "Filtrar objetos")
+    }
+
+    /// Linha na altura dos semáforos: o botão de sidebar fica à esquerda (sobreposto pela janela),
+    /// atualizar e nova consulta ficam à direita.
+    private var topActions: some View {
+        HStack(spacing: 2) {
+            Spacer()
+            iconButton(.refresh, help: "Atualizar árvore (⌘R)") { workspace.tree.reloadAll() }
+            iconButton(.newQuery, help: "Novo script (⌘T)") { workspace.newQueryTab() }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 36)
+    }
+
+    private func iconButton(_ symbol: IconSymbol, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Icon(symbol, size: 16)
+                .foregroundStyle(.secondary)
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private var filterField: some View {
+        @Bindable var tree = workspace.tree
+
+        return HStack(spacing: 7) {
+            Icon(.search, size: 15)
+                .foregroundStyle(.secondary)
+            TextField("Filtrar objetos", text: $tree.filter)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12.5))
+        }
+        .padding(.horizontal, 11)
+        .frame(height: 34)
+        .background {
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.65))
+                .shadow(color: .black.opacity(0.05), radius: 1.5, y: 1)
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 4)
     }
 
     private var header: some View {
@@ -32,17 +73,16 @@ struct SidebarView: View {
             Text("Conexões")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .textCase(.uppercase)
 
             Spacer()
 
             Button {
                 workspace.presentNewConnection()
             } label: {
-                SolarIcon(.plus, size: 14)
-                    .frame(width: 22, height: 22)
-                    .background(Circle().fill(.quaternary))
-                    .contentShape(Circle())
+                Icon(.newConnection, size: 16)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Nova conexão (⇧⌘N)")
@@ -66,7 +106,7 @@ struct SidebarView: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             Spacer()
-            SolarIcon(.database, size: 34)
+            Icon(.database, size: 34)
                 .foregroundStyle(.tertiary)
             Text("Nenhuma conexão")
                 .font(.system(size: 13, weight: .semibold))
@@ -87,7 +127,7 @@ struct SidebarView: View {
     private var noResultsState: some View {
         VStack(spacing: 6) {
             Spacer()
-            SolarIcon(.search, size: 26)
+            Icon(.search, size: 26)
                 .foregroundStyle(.tertiary)
             Text("Nenhum objeto encontrado")
                 .font(.system(size: 11))
@@ -134,7 +174,7 @@ struct TreeRowView: View {
         HStack(spacing: 5) {
             chevron
 
-            SolarIcon(node.symbolName, size: node.kind == .column ? 10 : 15)
+            Icon(node.symbolName, size: node.kind == .column ? 12 : 16, solid: isSelected)
                 .foregroundStyle(iconColor)
                 .frame(width: 17)
 
@@ -194,7 +234,7 @@ struct TreeRowView: View {
                 Button {
                     tree.toggle(node)
                 } label: {
-                    SolarIcon(.chevron, size: 12)
+                    Icon(.chevron, size: 12, solid: isSelected)
                         .rotationEffect(.degrees(row.isExpanded ? 90 : 0))
                         .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Color.secondary)
                         .frame(width: 12, height: 18)
@@ -221,21 +261,16 @@ struct TreeRowView: View {
     private var iconColor: Color {
         if node.kind == .error { return .red }
         if isSelected { return .white }
+        // Paleta enxuta: azul só no que é aberto/navegável (conexão, tabela, view),
+        // âmbar nas chaves, o resto neutro.
         switch node.kind {
-        case .connection:
+        case .connection, .table, .view:
             return .accentColor
-        case .database, .tablesFolder, .viewsFolder:
+        case .database, .schema, .tablesFolder, .viewsFolder:
             return .secondary
-        case .schema:
-            return .purple
-        case .table:
-            return .accentColor
-        case .view:
-            return .teal
         case .column:
             if node.column?.isPrimaryKey == true { return .orange }
-            if node.column?.references != nil { return .orange }
-            return .secondary
+            return Color.secondary.opacity(0.8)
         case .error:
             return .red
         }
@@ -258,7 +293,7 @@ struct TreeRowView: View {
         switch node.kind {
         case .connection:
             if let config = workspace.app.connections.connection(id: node.connectionID) {
-                Button("Nova consulta") { workspace.newQueryTab(for: config) }
+                Button("Novo script") { workspace.newQueryTab(for: config) }
                 Button("Editar conexão…") { workspace.presentEditConnection(config) }
                 Divider()
                 Button("Atualizar") { tree.reload(node) }
@@ -268,13 +303,13 @@ struct TreeRowView: View {
 
         case .table, .view:
             Button("Abrir dados") { workspace.openTable(node) }
-            Button("Nova consulta aqui") { workspace.newQueryTab(for: node) }
+            Button("Novo script") { workspace.newQueryTab(for: node) }
             Divider()
             Button("Copiar nome") { copy(node.title) }
             Button("Atualizar") { tree.reload(node) }
 
         case .database, .schema, .tablesFolder, .viewsFolder:
-            Button("Nova consulta aqui") { workspace.newQueryTab(for: node) }
+            Button("Novo script") { workspace.newQueryTab(for: node) }
             Divider()
             Button("Copiar nome") { copy(node.title) }
             Button("Atualizar") { tree.reload(node) }

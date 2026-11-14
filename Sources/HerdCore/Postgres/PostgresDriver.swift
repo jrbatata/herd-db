@@ -32,7 +32,7 @@ public actor PostgresDriver: DatabaseDriver {
             database: name,
             tls: config.useTLS ? .prefer(.makeClientConfiguration()) : .disable
         )
-        pgConfig.options.maximumConnections = 4
+        pgConfig.options.maximumConnections = 6
         pgConfig.options.minimumConnections = 0
         pgConfig.options.connectionIdleTimeout = .seconds(120)
 
@@ -184,27 +184,85 @@ public actor PostgresDriver: DatabaseDriver {
     }
 
     public func run(_ sql: String, database: String) async throws -> QueryResult {
+        let statements = SQLStatementSplitter.split(sql)
+        guard !statements.isEmpty else {
+            return QueryResult(message: "Nenhum comando para executar.", statementCount: 0)
+        }
+
         let client = try await connectClient(database)
         let start = Date()
 
+        let table: QueryResult?
         do {
-            let sequence = try await client.query(PostgresQuery(unsafeSQL: sql))
-            let columns = sequence.columns.map(\.name)
-            var rows: [[String?]] = []
+            table = try await client.withConnection { connection -> QueryResult? in
+                // Cancelling needs the backend id: postgres-nio only discards the stream
+                // locally, so we ask another connection to run pg_cancel_backend for us.
+                let backendID = try await Self.backendID(on: connection)
 
-            for try await row in sequence {
-                rows.append(row.map { PostgresCellFormatter.string(from: $0) })
-                if rows.count >= 20_000 { break }
+                return try await withTaskCancellationHandler {
+                    var lastTable: QueryResult?
+
+                    for (index, statement) in statements.enumerated() {
+                        try Task.checkCancellation()
+
+                        let sequence: PostgresRowSequence
+                        do {
+                            sequence = try await connection.query(
+                                PostgresQuery(unsafeSQL: statement),
+                                logger: Self.logger
+                            )
+                        } catch {
+                            throw Self.queryError(error, index: index, total: statements.count)
+                        }
+
+                        let columns = sequence.columns.map(\.name)
+                        var rows: [[String?]] = []
+
+                        do {
+                            for try await row in sequence {
+                                rows.append(row.map { PostgresCellFormatter.string(from: $0) })
+                                if rows.count >= Self.maximumRows { break }
+                            }
+                        } catch {
+                            throw Self.queryError(error, index: index, total: statements.count)
+                        }
+
+                        if !columns.isEmpty {
+                            lastTable = QueryResult(columns: columns, rows: rows)
+                        }
+                    }
+
+                    return lastTable
+                } onCancel: {
+                    guard let backendID else { return }
+                    // The pool is sized so one spare connection exists for this request.
+                    Task.detached {
+                        _ = try? await client.query(
+                            "SELECT pg_cancel_backend(CAST(\(Int(backendID)) AS int))"
+                        ).collect()
+                    }
+                }
             }
-
-            return QueryResult(
-                columns: columns,
-                rows: rows,
-                elapsed: Date().timeIntervalSince(start)
-            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as HerdError {
+            throw error
         } catch {
+            if Task.isCancelled { throw CancellationError() }
             throw HerdError.queryFailed(Self.describe(error))
         }
+
+        var result = table ?? QueryResult()
+        result.elapsed = Date().timeIntervalSince(start)
+        result.statementCount = statements.count
+
+        if statements.count > 1 {
+            result.message = "\(statements.count) comandos executados"
+        } else if result.isEmptyResultSet {
+            result.message = "Comando executado"
+        }
+
+        return result
     }
 
     public func shutdown() async {
@@ -215,12 +273,36 @@ public actor PostgresDriver: DatabaseDriver {
 
     // MARK: - Helpers
 
+    /// Maximum stored rows per result set.
+    private static let maximumRows = 20_000
+    private static let logger = Logger(label: "herd-db.postgres")
+
     private func connectClient(_ database: String?) async throws -> PostgresClient {
         do {
             return try await client(for: database)
         } catch {
             throw HerdError.connectionFailed(Self.describe(error))
         }
+    }
+
+    private static func queryError(_ error: Error, index: Int, total: Int) -> Error {
+        if error is CancellationError || Task.isCancelled {
+            return CancellationError()
+        }
+        let message = describe(error)
+        guard total > 1 else { return HerdError.queryFailed(message) }
+        return HerdError.queryFailed("Comando \(index + 1) de \(total): \(message)")
+    }
+
+    private static func backendID(on connection: PostgresConnection) async throws -> Int32? {
+        let sequence = try await connection.query(
+            PostgresQuery(unsafeSQL: "SELECT pg_backend_pid()"),
+            logger: logger
+        )
+        for try await row in sequence {
+            return try? row.decode(Int32.self)
+        }
+        return nil
     }
 
     private static func describe(_ error: Error) -> String {
@@ -282,6 +364,7 @@ enum PostgresCellFormatter {
 
     private static func hex(_ cell: PostgresCell) -> String? {
         guard let bytes = cell.bytes else { return nil }
+        guard bytes.readableBytes > 0 else { return "" }
         return "\\x" + bytes.readableBytesView.map { String(format: "%02x", $0) }.joined()
     }
 

@@ -75,7 +75,7 @@ struct ConnectionSheet: View {
                 }
 
                 row("Banco:") {
-                    TextField("Opcional — mostra todos se vazio", text: $config.database)
+                    TextField("Opcional. Se vazio, mostra todos", text: $config.database)
                         .textFieldStyle(.roundedBorder)
                 }
 
@@ -92,7 +92,7 @@ struct ConnectionSheet: View {
                 if !config.engine.isAvailable {
                     GridRow {
                         Color.clear.frame(width: 1)
-                        Label("O driver de SQL Server chega na fase 6. Por enquanto só PostgreSQL conecta.", systemImage: "info.circle")
+                        Label { Text("O driver de SQL Server chega na fase 6. Por enquanto só PostgreSQL conecta.") } icon: { Icon(.info, size: 14) }
                             .font(.system(size: 10.5))
                             .foregroundStyle(.secondary)
                     }
@@ -101,7 +101,7 @@ struct ConnectionSheet: View {
             .padding(.horizontal, 22)
 
             if let saveError {
-                Label(saveError, systemImage: "exclamationmark.triangle.fill")
+                Label { Text(saveError) } icon: { Icon(.warning, size: 14) }
                     .font(.system(size: 11))
                     .foregroundStyle(.red)
                     .lineLimit(3)
@@ -161,12 +161,12 @@ struct ConnectionSheet: View {
         case .idle:
             EmptyView()
         case .success(let message):
-            Label(message, systemImage: "checkmark.circle.fill")
+            Label { Text(message) } icon: { Icon(.check, size: 14, solid: true) }
                 .font(.system(size: 10.5))
                 .foregroundStyle(.green)
                 .lineLimit(1)
         case .failure(let message):
-            Label(message, systemImage: "xmark.circle.fill")
+            Label { Text(message) } icon: { Icon(.closeCircle, size: 14, solid: true) }
                 .font(.system(size: 10.5))
                 .foregroundStyle(.red)
                 .lineLimit(2)
