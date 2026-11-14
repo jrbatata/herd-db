@@ -8,7 +8,7 @@ struct QueryResultsView: View {
         switch state {
         case .idle:
             placeholder(
-                icon: "text.alignleft",
+                icon: .text,
                 title: "Sem resultados",
                 subtitle: "Execute a consulta com ⌘↵."
             )
@@ -42,7 +42,7 @@ struct QueryResultsView: View {
         case .success(let result):
             if result.isEmptyResultSet {
                 placeholder(
-                    icon: "checkmark.circle",
+                    icon: .check,
                     title: result.message ?? "Comando executado",
                     subtitle: "\(Int((result.elapsed * 1000).rounded())) ms"
                 )
@@ -52,10 +52,9 @@ struct QueryResultsView: View {
         }
     }
 
-    private func placeholder(icon: String, title: String, subtitle: String) -> some View {
+    private func placeholder(icon: SolarSymbol, title: String, subtitle: String) -> some View {
         VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 26, weight: .ultraLight))
+            SolarIcon(icon, size: 30)
                 .foregroundStyle(.tertiary)
             Text(title)
                 .font(.system(size: 12, weight: .medium))

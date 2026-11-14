@@ -39,8 +39,7 @@ struct SidebarView: View {
             Button {
                 workspace.presentNewConnection()
             } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .semibold))
+                SolarIcon(.plus, size: 14)
                     .frame(width: 22, height: 22)
                     .background(Circle().fill(.quaternary))
                     .contentShape(Circle())
@@ -67,8 +66,7 @@ struct SidebarView: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             Spacer()
-            Image(systemName: "cylinder.split.1x2")
-                .font(.system(size: 30, weight: .light))
+            SolarIcon(.database, size: 34)
                 .foregroundStyle(.tertiary)
             Text("Nenhuma conexão")
                 .font(.system(size: 13, weight: .semibold))
@@ -89,8 +87,7 @@ struct SidebarView: View {
     private var noResultsState: some View {
         VStack(spacing: 6) {
             Spacer()
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 22, weight: .light))
+            SolarIcon(.search, size: 26)
                 .foregroundStyle(.tertiary)
             Text("Nenhum objeto encontrado")
                 .font(.system(size: 11))
@@ -137,10 +134,9 @@ struct TreeRowView: View {
         HStack(spacing: 5) {
             chevron
 
-            Image(systemName: node.symbolName)
-                .font(.system(size: node.kind == .column ? 8 : 12, weight: .regular))
+            SolarIcon(node.symbolName, size: node.kind == .column ? 10 : 15)
                 .foregroundStyle(iconColor)
-                .frame(width: 15)
+                .frame(width: 17)
 
             Text(node.title)
                 .font(.system(size: 12.5, weight: node.kind == .connection ? .semibold : .regular))
@@ -198,8 +194,7 @@ struct TreeRowView: View {
                 Button {
                     tree.toggle(node)
                 } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
+                    SolarIcon(.chevron, size: 12)
                         .rotationEffect(.degrees(row.isExpanded ? 90 : 0))
                         .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Color.secondary)
                         .frame(width: 12, height: 18)

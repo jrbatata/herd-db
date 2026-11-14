@@ -38,8 +38,7 @@ struct TabBarView: View {
                 Button {
                     workspace.newQueryTab()
                 } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .semibold))
+                    SolarIcon(.plus, size: 14)
                         .foregroundStyle(.secondary)
                         .frame(width: 24, height: 24)
                         .contentShape(Rectangle())
@@ -60,8 +59,7 @@ struct TabBarView: View {
         let isHovered = hoveredTab == tab.id
 
         return HStack(spacing: 6) {
-            Image(systemName: tab.state.isFailure ? "exclamationmark.triangle.fill" : "chevron.left.forwardslash.chevron.right")
-                .font(.system(size: 10, weight: .medium))
+            SolarIcon(tab.state.isFailure ? .warning : .code, size: 13)
                 .foregroundStyle(tab.state.isFailure ? Color.red : (isActive ? Color.secondary : Color.secondary.opacity(0.7)))
 
             Text(tab.title)
@@ -72,8 +70,7 @@ struct TabBarView: View {
             Button {
                 workspace.closeTab(tab)
             } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
+                SolarIcon(.close, size: 11)
                     .frame(width: 14, height: 14)
                     .contentShape(Rectangle())
             }
@@ -104,8 +101,7 @@ struct EmptyWorkspaceView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: "cylinder.split.1x2")
-                .font(.system(size: 40, weight: .ultraLight))
+            SolarIcon(.database, size: 46)
                 .foregroundStyle(.tertiary)
 
             Text("Sem aba aberta")

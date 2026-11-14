@@ -30,6 +30,7 @@ struct MainWindow: View {
             DetailView(workspace: workspace)
         }
         .navigationTitle(workspace.windowTitle)
+        .toolbarTitleDisplayMode(.inline)
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 960, minHeight: 600)
         .toolbar { toolbar }

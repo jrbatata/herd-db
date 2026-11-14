@@ -29,8 +29,8 @@ public enum DatabaseEngine: String, Codable, CaseIterable, Identifiable, Sendabl
 
     public var symbolName: String {
         switch self {
-        case .postgres: "cylinder.split.1x2"
-        case .sqlServer: "server.rack"
+        case .postgres: "database"
+        case .sqlServer: "server"
         }
     }
 }

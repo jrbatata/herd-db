@@ -36,18 +36,18 @@ struct TreeNode: Identifiable, Hashable, Sendable {
 
     var isSelectable: Bool { kind != .error }
 
-    var symbolName: String {
+    var symbolName: SolarSymbol {
         switch kind {
-        case .connection: "cylinder.split.1x2"
-        case .database: "cylinder"
-        case .schema: "folder"
-        case .tablesFolder, .table: "tablecells"
-        case .viewsFolder, .view: "eye"
+        case .connection: .database
+        case .database: .database
+        case .schema: .folder
+        case .tablesFolder, .table: .table
+        case .viewsFolder, .view: .eye
         case .column:
-            if column?.isPrimaryKey == true { "key.fill" }
-            else if column?.references != nil { "link" }
-            else { "smallcircle.filled.circle" }
-        case .error: "exclamationmark.triangle.fill"
+            if column?.isPrimaryKey == true { .key }
+            else if column?.references != nil { .link }
+            else { .dot }
+        case .error: .warning
         }
     }
 }

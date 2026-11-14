@@ -45,8 +45,7 @@ struct QueryTabView: View {
 
     private var actionBar: some View {
         HStack(spacing: 10) {
-            Image(systemName: "cylinder")
-                .font(.system(size: 10))
+            SolarIcon(.database, size: 13)
                 .foregroundStyle(.secondary)
 
             Text(tab.contextLabel)
