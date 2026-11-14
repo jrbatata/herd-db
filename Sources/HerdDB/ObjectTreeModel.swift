@@ -70,8 +70,11 @@ final class ObjectTreeModel {
     var expanded: Set<String> = []
     private(set) var children: [String: [TreeNode]] = [:]
     private(set) var loading: Set<String> = []
+    private(set) var connectedIDs: Set<UUID> = []
     var filter = ""
     var selection: String?
+    var selectedIDs: Set<String> = []
+    private var selectionAnchorID: String?
 
     private var knownConfigs: [UUID: ConnectionConfig] = [:]
     private var didAutoExpand = false
@@ -91,6 +94,7 @@ final class ObjectTreeModel {
         knownConfigs = Dictionary(uniqueKeysWithValues: configs.map { ($0.id, $0) })
 
         for config in configs where previous[config.id] != nil && previous[config.id] != config {
+            connectedIDs.remove(config.id)
             clearSubtree("c/\(config.id.uuidString)")
             if expanded.contains(connectionID(config.id)) {
                 Task { await loadNode(withID: connectionID(config.id)) }
@@ -101,6 +105,7 @@ final class ObjectTreeModel {
         let livePrefixes = configs.map { "c/\($0.id.uuidString)" }
         children = children.filter { key, _ in livePrefixes.contains { key.hasPrefix($0) } }
         expanded = expanded.filter { key in livePrefixes.contains { key.hasPrefix($0) } }
+        connectedIDs = connectedIDs.filter { knownConfigs[$0] != nil }
 
         if !didAutoExpand, roots.count == 1, let root = roots.first {
             didAutoExpand = true
@@ -139,12 +144,37 @@ final class ObjectTreeModel {
         toggle(node)
     }
 
-    func select(_ node: TreeNode) {
+    func select(_ node: TreeNode, extendRange: Bool = false, toggleSingle: Bool = false) {
         guard node.isSelectable else { return }
+        if extendRange, let anchor = selectionAnchorID ?? selection {
+            let visible = rows.map(\.node).filter(\.isSelectable)
+            if let i1 = visible.firstIndex(where: { $0.id == anchor }),
+               let i2 = visible.firstIndex(where: { $0.id == node.id }) {
+                let lower = min(i1, i2)
+                let upper = max(i1, i2)
+                selectedIDs = Set(visible[lower...upper].map(\.id))
+                selection = node.id
+                return
+            }
+        }
+        if toggleSingle {
+            if selectedIDs.contains(node.id) {
+                selectedIDs.remove(node.id)
+                selection = selectedIDs.first
+            } else {
+                selectedIDs.insert(node.id)
+                selection = node.id
+                selectionAnchorID = node.id
+            }
+            return
+        }
         selection = node.id
+        selectedIDs = [node.id]
+        selectionAnchorID = node.id
     }
 
     func reload(_ node: TreeNode) {
+        if node.kind == .connection { connectedIDs.remove(node.connectionID) }
         clearSubtree(node.id)
         if node.isExpandable, expanded.contains(node.id) {
             Task { await loadNode(node) }
@@ -152,9 +182,13 @@ final class ObjectTreeModel {
     }
 
     func reloadAll() {
+        app.catalog.invalidateAll()
+        connectedIDs.removeAll()
         children.removeAll()
         loading.removeAll()
         selection = nil
+        selectedIDs.removeAll()
+        selectionAnchorID = nil
         for root in roots where expanded.contains(root.id) {
             Task { await loadNode(root) }
         }
@@ -205,6 +239,7 @@ final class ObjectTreeModel {
         let driver = app.drivers.driver(for: config)
         do {
             let kids = try await loadChildren(of: node, config: config, driver: driver)
+            if node.kind == .connection { connectedIDs.insert(node.connectionID) }
             children[node.id] = kids
             for kid in kids where expanded.contains(kid.id) && children[kid.id] == nil {
                 Task { await loadNode(kid) }
@@ -212,6 +247,7 @@ final class ObjectTreeModel {
         } catch is CancellationError {
             return
         } catch {
+            if node.kind == .connection { connectedIDs.remove(node.connectionID) }
             children[node.id] = [errorNode(for: node, message: error.localizedDescription)]
         }
     }

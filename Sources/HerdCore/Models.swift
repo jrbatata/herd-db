@@ -159,6 +159,20 @@ public struct ColumnInfo: Identifiable, Hashable, Sendable {
 
 // MARK: - Results
 
+public struct TablePage: Sendable, Equatable {
+    public let result: QueryResult
+    public let totalRows: Int
+    public let page: Int
+    public let columns: [ColumnInfo]
+
+    public init(result: QueryResult, totalRows: Int, page: Int, columns: [ColumnInfo] = []) {
+        self.result = result
+        self.totalRows = totalRows
+        self.page = page
+        self.columns = columns
+    }
+}
+
 /// One tabular result produced by a statement.
 public struct ResultSet: Sendable, Equatable {
     public var columns: [String]

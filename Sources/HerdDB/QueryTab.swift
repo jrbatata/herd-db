@@ -33,11 +33,20 @@ final class QueryTab: Identifiable {
     let connectionID: UUID
     let connectionName: String
     let schema: String?
+    var sourceTable: String?
+    var browseSQL: String?
+    var tablePage: TablePage?
+    var tableFilter = ""
+    var tableSortColumn: String?
+    var tableSortDescending = false
 
     /// The database can be changed in the tab's toolbar.
     var database: String
     var title: String
     var sql: String
+    var fileURL: URL?
+    var fileEncoding: String.Encoding = .utf8
+    var savedSQL: String
     var state: QueryRunState = .idle
     /// UTF-16 selection reported by the editor.
     var selection: NSRange = NSRange(location: 0, length: 0)
@@ -47,6 +56,7 @@ final class QueryTab: Identifiable {
     init(title: String, sql: String, context: QueryContext) {
         self.title = title
         self.sql = sql
+        self.savedSQL = sql
         self.connectionID = context.connectionID
         self.connectionName = context.connectionName
         self.database = context.database
@@ -62,10 +72,18 @@ final class QueryTab: Identifiable {
         !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var hasUnsavedChanges: Bool { sql != savedSQL }
+
     // MARK: - Running
 
     func run(app: AppModel, scope: QueryExecutionScope = .automatic) {
         guard !isRunning else { return }
+
+        if let browseSQL, sql == browseSQL, !hasSelection, scope == .automatic {
+            browseTable(app: app, page: 0)
+            return
+        }
+        tablePage = nil
 
         let sql = textToRun(scope: scope)
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -113,6 +131,33 @@ final class QueryTab: Identifiable {
                     duration: Date().timeIntervalSince(started),
                     errorMessage: error.localizedDescription
                 )
+            }
+        }
+    }
+
+    func browseTable(app: AppModel, page: Int) {
+        guard !isRunning, let table = sourceTable,
+              let config = app.connections.connection(id: connectionID) else { return }
+        let driver = app.drivers.driver(for: config)
+        let database = self.database
+        let filter = tableFilter
+        let sortColumn = tableSortColumn
+        let descending = tableSortDescending
+        let schema = self.schema
+        state = .running
+        task = Task { [weak self] in
+            do {
+                let loaded = try await driver.browseTable(database: database, schema: schema,
+                                                          table: table, page: page, pageSize: 500,
+                                                          filter: filter, sortColumn: sortColumn,
+                                                          descending: descending)
+                guard let self, !Task.isCancelled else { return }
+                self.tablePage = loaded
+                self.state = .success(loaded.result)
+            } catch is CancellationError {
+                self?.state = .cancelled
+            } catch {
+                self?.state = .failure(error.localizedDescription)
             }
         }
     }

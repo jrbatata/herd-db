@@ -84,6 +84,28 @@ final class PostgresDriverTests: XCTestCase {
         let cafe = try XCTUnwrap(result.rows.first { $0[0] == "Café" })
         XCTAssertNil(cafe[1])
 
+        let firstPage = try await driver.browseTable(
+            database: "postgres", schema: schema, table: "items", page: 0,
+            pageSize: 1, filter: "", sortColumn: nil, descending: false
+        )
+        XCTAssertEqual(firstPage.totalRows, 2)
+        XCTAssertEqual(firstPage.result.rows.count, 1)
+        XCTAssertEqual(firstPage.result.rows.first?[2], "Água")
+
+        let secondPage = try await driver.browseTable(
+            database: "postgres", schema: schema, table: "items", page: 1,
+            pageSize: 1, filter: "", sortColumn: "name", descending: false
+        )
+        XCTAssertEqual(secondPage.page, 1)
+        XCTAssertEqual(secondPage.result.rows.first?[2], "Café")
+
+        let filteredPage = try await driver.browseTable(
+            database: "postgres", schema: schema, table: "items", page: 0,
+            pageSize: 500, filter: "Ág", sortColumn: "name", descending: true
+        )
+        XCTAssertEqual(filteredPage.totalRows, 1)
+        XCTAssertEqual(filteredPage.result.rows.first?[2], "Água")
+
         let binaries = try await driver.run(
             #"SELECT ''::bytea AS empty, '\x00ff'::bytea AS data, NULL::bytea AS missing;"#,
             database: "postgres"
@@ -96,6 +118,48 @@ final class PostgresDriverTests: XCTestCase {
             _ = try await driver.run("SELECT * FROM \(schema).does_not_exist;", database: "postgres")
         }
         XCTAssertNotNil(failure)
+    }
+
+    // MARK: - Phase 3: catalog
+
+    func testCatalogSnapshotIncludesSchemasTablesViewsAndColumns() async throws {
+        guard ProcessInfo.processInfo.environment["HERD_TEST_PG"] == "1" else {
+            throw XCTSkip("Set HERD_TEST_PG=1 to run against the local PostgreSQL server.")
+        }
+
+        let driver = try await makeDriver()
+        addTeardownBlock { await driver.shutdown() }
+
+        let schema = "herd_catalog_\(UUID().uuidString.prefix(8).lowercased())"
+        addTeardownBlock {
+            _ = try? await driver.run("DROP SCHEMA IF EXISTS \(schema) CASCADE;", database: "postgres")
+        }
+
+        _ = try await driver.run(
+            """
+            CREATE SCHEMA \(schema);
+            CREATE TABLE \(schema).owners (id serial PRIMARY KEY, name text NOT NULL);
+            CREATE VIEW \(schema).owner_names AS SELECT name FROM \(schema).owners;
+            """,
+            database: "postgres"
+        )
+
+        let catalog = try await driver.catalog(database: "postgres")
+
+        XCTAssertTrue(catalog.schemas.contains(schema))
+        XCTAssertFalse(catalog.schemas.contains("pg_catalog"))
+        XCTAssertFalse(catalog.schemas.contains("information_schema"))
+
+        let tables = catalog.tables(in: schema)
+        XCTAssertEqual(Set(tables.map(\.name)), ["owners", "owner_names"])
+        XCTAssertEqual(tables.first { $0.name == "owner_names" }?.kind, .view)
+
+        let columns = catalog.columns(schema: schema, table: "owners")
+        XCTAssertEqual(columns.map(\.name), ["id", "name"])
+        XCTAssertEqual(columns.first { $0.name == "id" }?.dataType, "integer")
+
+        let flat = try await driver.listCatalogColumns(database: "postgres")
+        XCTAssertTrue(flat.contains { $0.schema == schema && $0.table == "owners" && $0.name == "name" })
     }
 
     // MARK: - Phase 2: scripts and cancellation

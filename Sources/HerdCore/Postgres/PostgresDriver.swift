@@ -183,6 +183,63 @@ public actor PostgresDriver: DatabaseDriver {
         }
     }
 
+    public func catalog(database: String) async throws -> SQLCatalog {
+        let client = try await connectClient(database)
+        do {
+            let schemaSequence = try await client.query("""
+                SELECT nspname
+                FROM pg_namespace
+                WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'
+                ORDER BY nspname;
+                """)
+            var schemas: [String] = []
+            for try await row in schemaSequence {
+                schemas.append(try row.decode(String.self))
+            }
+
+            let tableSequence = try await client.query("""
+                SELECT table_schema, table_name, table_type
+                FROM information_schema.tables
+                WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+                  AND table_type IN ('BASE TABLE', 'VIEW')
+                ORDER BY table_schema, table_name;
+                """)
+            var tables: [TableInfo] = []
+            for try await row in tableSequence {
+                let (schema, name, type) = try row.decode((String, String, String).self)
+                tables.append(TableInfo(schema: schema, name: name, kind: type == "VIEW" ? .view : .table))
+            }
+
+            let columns = try await listCatalogColumns(database: database)
+            return SQLCatalog(schemas: schemas, tables: tables, columns: columns)
+        } catch {
+            throw HerdError.queryFailed(Self.describe(error))
+        }
+    }
+
+    public func listCatalogColumns(database: String) async throws -> [CatalogColumn] {
+        let client = try await connectClient(database)
+        do {
+            let sequence = try await client.query("""
+                SELECT table_schema, table_name, column_name, data_type
+                FROM information_schema.columns
+                WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+                ORDER BY table_schema, table_name, ordinal_position;
+                """)
+            var columns: [CatalogColumn] = []
+            for try await row in sequence {
+                let (schema, table, name, dataType) =
+                    try row.decode((String, String, String, String).self)
+                columns.append(
+                    CatalogColumn(schema: schema, table: table, name: name, dataType: dataType)
+                )
+            }
+            return columns
+        } catch {
+            throw HerdError.queryFailed(Self.describe(error))
+        }
+    }
+
     public func run(_ sql: String, database: String) async throws -> QueryResult {
         let statements = SQLStatementSplitter.split(sql)
         guard !statements.isEmpty else {
@@ -266,6 +323,43 @@ public actor PostgresDriver: DatabaseDriver {
         }
 
         return result
+    }
+
+    public func browseTable(database: String, schema: String?, table: String,
+                            page: Int, pageSize: Int, filter: String,
+                            sortColumn: String?, descending: Bool) async throws -> TablePage {
+        let schemaName = schema ?? "public"
+        let columns = try await listColumns(database: database, schema: schemaName, table: table)
+        let target = dialect.qualify(schema: schemaName, table: table)
+        let safePage = max(0, page)
+        let safeSize = min(max(pageSize, 1), 500)
+        let offset = safePage.multipliedReportingOverflow(by: safeSize)
+        guard !offset.overflow else { throw HerdError.queryFailed("Página fora do intervalo.") }
+
+        // Hex-encoded UTF-8 is decoded by PostgreSQL, so arbitrary search text never
+        // becomes SQL syntax. Identifiers come only from the catalog and are quoted.
+        let hex = filter.utf8.map { String(format: "%02x", $0) }.joined()
+        let search = "(convert_from(decode('\(hex)', 'hex'), 'UTF8') COLLATE \"default\")"
+        let terms = columns.map { "strpos(lower(\(dialect.quote($0.name))::text), lower(\(search))) > 0" }
+        let predicate = filter.isEmpty || terms.isEmpty ? "" : " WHERE " + terms.joined(separator: " OR ")
+        let countSQL = "SELECT count(*) FROM \(target)\(predicate);"
+        let counted = try await run(countSQL, database: database)
+        let totalText: String? = counted.rows.first?.first ?? nil
+        let total = Int(totalText ?? "0") ?? 0
+
+        let sortColumns: [String]
+        if let sortColumn, columns.contains(where: { $0.name == sortColumn }) {
+            sortColumns = [sortColumn]
+        } else {
+            let primaryKeys = columns.filter(\.isPrimaryKey).map(\.name)
+            sortColumns = primaryKeys.isEmpty ? columns.prefix(1).map(\.name) : primaryKeys
+        }
+        let order = sortColumns.isEmpty ? "" : " ORDER BY " + sortColumns.map {
+            "\(dialect.quote($0)) \(descending ? "DESC" : "ASC") NULLS LAST"
+        }.joined(separator: ", ")
+        let dataSQL = "SELECT * FROM \(target)\(predicate)\(order) LIMIT \(safeSize) OFFSET \(offset.partialValue);"
+        let result = try await run(dataSQL, database: database)
+        return TablePage(result: result, totalRows: total, page: safePage, columns: columns)
     }
 
     public func shutdown() async {

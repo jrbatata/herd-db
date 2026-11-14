@@ -9,21 +9,25 @@ final class AppModel {
     let connections: ConnectionStore
     let drivers: DriverRegistry
     let history: QueryHistoryStore
+    let catalog: SQLCatalogStore
 
     init() {
         let connections = ConnectionStore()
         self.connections = connections
         self.drivers = DriverRegistry(store: connections)
         self.history = QueryHistoryStore()
+        self.catalog = SQLCatalogStore()
     }
 
     func save(_ config: ConnectionConfig, password: String?) throws {
         try connections.upsert(config, password: password)
         drivers.invalidate(config.id)
+        catalog.invalidate(connectionID: config.id)
     }
 
     func remove(_ config: ConnectionConfig) throws {
         drivers.invalidate(config.id)
+        catalog.invalidate(connectionID: config.id)
         try connections.remove(config)
     }
 }
