@@ -56,8 +56,30 @@ struct QueryResultsView: View {
                     title: result.message ?? "Comando executado",
                     subtitle: "\(Int((result.elapsed * 1000).rounded())) ms"
                 )
+            } else if result.sets.count > 1 {
+                VStack(spacing: 0) {
+                    ForEach(Array(result.sets.enumerated()), id: \.offset) { index, set in
+                        if index > 0 { Divider() }
+                        VStack(spacing: 0) {
+                            HStack(spacing: 6) {
+                                Text("Resultado \(index + 1)")
+                                    .font(.system(size: 10.5, weight: .medium))
+                                Text("\(set.rows.count) \(set.rows.count == 1 ? "linha" : "linhas")")
+                                    .font(.system(size: 10.5))
+                                    .foregroundStyle(.tertiary)
+                                Spacer()
+                            }
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .frame(height: 24)
+                            .background(Color(nsColor: .windowBackgroundColor))
+
+                            ResultTable(resultSet: set)
+                        }
+                    }
+                }
             } else {
-                ResultTable(result: result)
+                ResultTable(resultSet: ResultSet(columns: result.columns, rows: result.rows))
             }
         }
     }
@@ -79,18 +101,18 @@ struct QueryResultsView: View {
 }
 
 private struct ResultTable: View {
-    let result: QueryResult
+    let resultSet: ResultSet
 
     private let displayLimit = 1_000
 
     private var rows: ArraySlice<[String?]> {
-        result.rows.prefix(displayLimit)
+        resultSet.rows.prefix(displayLimit)
     }
 
     private var widths: [CGFloat] {
-        result.columns.enumerated().map { index, name in
+        resultSet.columns.enumerated().map { index, name in
             var longest = name.count
-            for row in result.rows.prefix(60) where row.indices.contains(index) {
+            for row in resultSet.rows.prefix(60) where row.indices.contains(index) {
                 longest = max(longest, min(row[index]?.count ?? 4, 90))
             }
             return min(max(CGFloat(longest) * 6.9 + 26, 84), 380)
@@ -109,8 +131,8 @@ private struct ResultTable: View {
                                 dataRow(index: index, row: row)
                             }
 
-                            if result.rows.count > displayLimit {
-                                Text("Mostrando \(displayLimit) de \(result.rows.count) linhas. A paginação chega na fase 4.")
+                            if resultSet.rows.count > displayLimit {
+                                Text("Mostrando \(displayLimit) de \(resultSet.rows.count) linhas. A paginação chega na fase 4.")
                                     .font(.system(size: 10.5))
                                     .foregroundStyle(.secondary)
                                     .padding(.horizontal, 12)
@@ -133,7 +155,7 @@ private struct ResultTable: View {
                 .frame(width: 46, alignment: .leading)
                 .padding(.leading, 10)
 
-            ForEach(Array(result.columns.enumerated()), id: \.offset) { index, name in
+            ForEach(Array(resultSet.columns.enumerated()), id: \.offset) { index, name in
                 Text(name)
                     .font(.system(size: 10.5, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -165,7 +187,7 @@ private struct ResultTable: View {
                 .frame(width: 46, alignment: .leading)
                 .padding(.leading, 10)
 
-            ForEach(Array(result.columns.enumerated()), id: \.offset) { index, _ in
+            ForEach(Array(resultSet.columns.enumerated()), id: \.offset) { index, _ in
                 let value = row.indices.contains(index) ? row[index] : nil
                 Text(value ?? "NULL")
                     .font(.system(size: 11, design: .monospaced))

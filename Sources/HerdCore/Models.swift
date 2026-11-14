@@ -159,7 +159,20 @@ public struct ColumnInfo: Identifiable, Hashable, Sendable {
 
 // MARK: - Results
 
+/// One tabular result produced by a statement.
+public struct ResultSet: Sendable, Equatable {
+    public var columns: [String]
+    public var rows: [[String?]]
+
+    public init(columns: [String], rows: [[String?]]) {
+        self.columns = columns
+        self.rows = rows
+    }
+}
+
 public struct QueryResult: Sendable, Equatable {
+    /// Every tabular result of the script, in order. `columns` and `rows` mirror the last one.
+    public var sets: [ResultSet] = []
     public var columns: [String]
     public var rows: [[String?]]
     public var elapsed: TimeInterval

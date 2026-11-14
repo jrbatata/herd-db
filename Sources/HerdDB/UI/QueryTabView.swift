@@ -95,12 +95,25 @@ struct QueryTabView: View {
                 .controlSize(.small)
                 .help("Cancelar execução (⌘.)")
             } else {
+                if tab.hasSelection {
+                    Button {
+                        tab.run(app: app, scope: .all)
+                    } label: {
+                        Text("Executar tudo")
+                            .font(.system(size: 11.5, weight: .medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!tab.hasText)
+                    .help("Executar o script inteiro, ignorando a seleção")
+                }
+
                 Button {
                     tab.run(app: app)
                 } label: {
                     HStack(spacing: 6) {
                         Icon(.play, size: 11, solid: true)
-                        Text("Executar")
+                        Text(tab.hasSelection ? "Executar seleção" : "Executar")
                         KeyHint("⌘↵", onProminent: true)
                     }
                     .font(.system(size: 11.5, weight: .medium))
@@ -108,7 +121,7 @@ struct QueryTabView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .disabled(!tab.hasText)
-                .help("Executar script (⌘↵)")
+                .help(tab.hasSelection ? "Executar o texto selecionado (⌘↵)" : "Executar script (⌘↵)")
             }
         }
         .padding(.horizontal, 12)

@@ -201,6 +201,7 @@ public actor PostgresDriver: DatabaseDriver {
 
                 return try await withTaskCancellationHandler {
                     var lastTable: QueryResult?
+                    var allSets: [ResultSet] = []
 
                     for (index, statement) in statements.enumerated() {
                         try Task.checkCancellation()
@@ -229,9 +230,11 @@ public actor PostgresDriver: DatabaseDriver {
 
                         if !columns.isEmpty {
                             lastTable = QueryResult(columns: columns, rows: rows)
+                            allSets.append(ResultSet(columns: columns, rows: rows))
                         }
                     }
 
+                    lastTable?.sets = allSets
                     return lastTable
                 } onCancel: {
                     guard let backendID else { return }

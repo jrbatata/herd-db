@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import HerdCore
 
@@ -126,6 +127,26 @@ struct TopBarView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { workspace.activeTabID = tab.id }
+        .contextMenu {
+            Button("Fechar") { workspace.closeTab(tab) }
+            Button("Fechar outras") { workspace.closeOthers(except: tab) }
+                .disabled(workspace.tabs.count < 2)
+            Button("Fechar à direita") { workspace.closeTabs(after: tab) }
+                .disabled(workspace.tabs.last?.id == tab.id)
+            Button("Fechar todas") { workspace.closeAllTabs() }
+
+            Divider()
+
+            Button("Copiar SQL") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(tab.sql, forType: .string)
+            }
+            .disabled(!tab.hasText)
+            Button("Copiar nome") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(tab.title, forType: .string)
+            }
+        }
         .onHover { hoveredTab = $0 ? tab.id : nil }
     }
 }

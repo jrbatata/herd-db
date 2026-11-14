@@ -117,6 +117,20 @@ final class WorkspaceState {
         }
     }
 
+    func closeOthers(except tab: QueryTab) {
+        for other in tabs where other.id != tab.id { closeTab(other) }
+        activeTabID = tab.id
+    }
+
+    func closeTabs(after tab: QueryTab) {
+        guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        for other in tabs[(index + 1)...] { closeTab(other) }
+    }
+
+    func closeAllTabs() {
+        for tab in tabs { closeTab(tab) }
+    }
+
     func closeActiveTab() {
         guard let tab = activeTab else { return }
         closeTab(tab)

@@ -75,6 +75,12 @@ struct HerdCommands: Commands {
             .keyboardShortcut(.return, modifiers: [.command, .option])
             .disabled(!canRun)
 
+            Button("Executar tudo") {
+                workspace?.runActiveTab(scope: .all)
+            }
+            .keyboardShortcut(.return, modifiers: [.command, .shift])
+            .disabled(!canRun)
+
             Button("Cancelar execução") {
                 workspace?.cancelActiveTab()
             }

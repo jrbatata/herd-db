@@ -15,6 +15,8 @@ enum QueryExecutionScope {
     case automatic
     /// Selection when there is one, otherwise the command under the cursor.
     case selection
+    /// The whole editor, ignoring any selection.
+    case all
 }
 
 struct QueryContext: Sendable {
@@ -122,6 +124,7 @@ final class QueryTab: Identifiable {
     // MARK: - Scope
 
     private func textToRun(scope: QueryExecutionScope) -> String {
+        if scope == .all { return sql }
         let selected = selectedSQL
         if !selected.isEmpty { return selected }
 
@@ -130,8 +133,12 @@ final class QueryTab: Identifiable {
             return sql
         case .selection:
             return statementUnderCursor() ?? sql
+        case .all:
+            return sql
         }
     }
+
+    var hasSelection: Bool { !selectedSQL.isEmpty }
 
     private var selectedSQL: String {
         guard selection.length > 0 else { return "" }
