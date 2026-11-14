@@ -16,6 +16,7 @@ struct ConnectionSheet: View {
 
     @State private var config: ConnectionConfig
     @State private var password: String
+    @State private var showPassword = false
     @State private var testState: TestState = .idle
     @State private var isTesting = false
     @State private var saveError: String?
@@ -72,7 +73,25 @@ struct ConnectionSheet: View {
                     }
                     Divider()
                     field("Senha") {
-                        SecureField("Chaveiro do macOS", text: $password)
+                        HStack(spacing: 6) {
+                            Group {
+                                if showPassword {
+                                    TextField("Chaveiro do macOS", text: $password)
+                                } else {
+                                    SecureField("Chaveiro do macOS", text: $password)
+                                }
+                            }
+                            Button {
+                                showPassword.toggle()
+                            } label: {
+                                Icon(showPassword ? .eyeOff : .eye, size: 14)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 20, height: 20)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .help(showPassword ? "Ocultar senha" : "Mostrar senha")
+                        }
                     }
                 }
 

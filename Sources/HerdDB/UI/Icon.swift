@@ -38,6 +38,8 @@ enum IconSymbol: String, CaseIterable {
     case save
     case download
     case undo
+    case eye
+    case eyeOff
 
     /// Nome do ícone no IconMCP.
     var iconName: String {
@@ -75,11 +77,15 @@ enum IconSymbol: String, CaseIterable {
         case .save: "save"
         case .download: "download"
         case .undo: "undo"
+        case .eye: "eye"
+        case .eyeOff: "eye-off"
         }
     }
 
     var outlineSVG: String {
         switch self {
+        case .eye: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8s2.3-4.5 6.5-4.5S14.5 8 14.5 8s-2.3 4.5-6.5 4.5S1.5 8 1.5 8Z"/><circle cx="8" cy="8" r="2"/></svg>"##
+        case .eyeOff: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><path d="M6.6 3.7A6.3 6.3 0 0 1 8 3.5c4.2 0 6.5 4.5 6.5 4.5a11.7 11.7 0 0 1-2.1 2.9"/><path d="M9.4 9.4a2 2 0 0 1-2.8-2.8"/><path d="M11.3 11.3A6.4 6.4 0 0 1 8 12.5C3.8 12.5 1.5 8 1.5 8a11.8 11.8 0 0 1 3.2-3.7"/><line x1="2.25" y1="2.25" x2="13.75" y2="13.75"/></svg>"##
         case .trash: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4.25h11"/><path d="M5.75 4.25V3a1 1 0 0 1 1-1h2.5a1 1 0 0 1 1 1v1.25"/><path d="M3.75 4.25l.6 8.2a1.5 1.5 0 0 0 1.5 1.3h4.3a1.5 1.5 0 0 0 1.5-1.3l.6-8.2"/><line x1="6.75" y1="7" x2="6.75" y2="11"/><line x1="9.25" y1="7" x2="9.25" y2="11"/></svg>"##
         case .save: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><path d="M12.25 13.75H3.75a1.5 1.5 0 0 1-1.5-1.5V3.75a1.5 1.5 0 0 1 1.5-1.5h6.6l3.4 3.4v6.6a1.5 1.5 0 0 1-1.5 1.5Z"/><path d="M10.75 13.75V9.25h-5.5v4.5"/><path d="M5.25 2.25v3.25h4.5"/></svg>"##
         case .download: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 10.5v1.75a1.5 1.5 0 0 0 1.5 1.5h8a1.5 1.5 0 0 0 1.5-1.5V10.5"/><path d="M8 2.25v8"/><path d="m5 7.5 3 3 3-3"/></svg>"##
@@ -118,7 +124,7 @@ enum IconSymbol: String, CaseIterable {
 
     var solidSVG: String {
         switch self {
-        case .cloudCheck, .cloudX, .copy, .trash, .save, .download, .undo: outlineSVG
+        case .cloudCheck, .cloudX, .copy, .trash, .save, .download, .undo, .eye, .eyeOff: outlineSVG
         case .alertCircle: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.253" stroke-linecap="round" stroke-linejoin="round"><path fill="#000" fill-rule="evenodd" stroke="none" d="M14 8A6 6 0 1 1 2 8a6 6 0 0 1 12 0ZM8.63 5a.63.63 0 0 0-1.26 0v3.5a.63.63 0 0 0 1.26 0Zm.17 5.9a.8.8 0 1 0-1.6 0 .8.8 0 0 0 1.6 0Z"/></svg>"##
         case .sidebarLeft: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.253" stroke-linecap="round" stroke-linejoin="round"><rect x="2.25" y="2.75" width="11.5" height="10.5" rx="2.5"/><path d="M4.75 2.75H6v10.5H4.75a2.5 2.5 0 0 1-2.5-2.5v-5.5a2.5 2.5 0 0 1 2.5-2.5Z" fill="#000"/></svg>"##
         case .panelBottom: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.253" stroke-linecap="round" stroke-linejoin="round"><rect x="2.25" y="2.75" width="11.5" height="10.5" rx="2.5"/><path d="M2.25 9.5h11.5v1.25a2.5 2.5 0 0 1-2.5 2.5h-6.5a2.5 2.5 0 0 1-2.5-2.5Z" fill="#000"/></svg>"##
