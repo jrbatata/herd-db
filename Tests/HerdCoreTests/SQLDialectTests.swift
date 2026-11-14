@@ -28,6 +28,37 @@ final class SQLDialectTests: XCTestCase {
         )
     }
 
+    func testReadyQueries() {
+        let dialect = SQLDialect.postgres
+        XCTAssertEqual(
+            dialect.readyQuery(.select, schema: "public", table: "orders"),
+            "SELECT *\nFROM \"public\".\"orders\";"
+        )
+        XCTAssertEqual(
+            dialect.readyQuery(.selectLimited, schema: nil, table: "orders"),
+            "SELECT *\nFROM \"orders\"\nLIMIT 10;"
+        )
+        XCTAssertEqual(
+            dialect.readyQuery(.insert, schema: "public", table: "orders"),
+            "INSERT INTO \"public\".\"orders\" (coluna1, coluna2)\nVALUES (valor1, valor2);"
+        )
+        XCTAssertEqual(
+            dialect.readyQuery(.update, schema: "public", table: "orders"),
+            "UPDATE \"public\".\"orders\"\nSET coluna1 = valor1\nWHERE condicao;"
+        )
+        XCTAssertEqual(
+            dialect.readyQuery(.delete, schema: "public", table: "orders"),
+            "DELETE FROM \"public\".\"orders\"\nWHERE condicao;"
+        )
+    }
+
+    func testReadyQueryTitles() {
+        XCTAssertEqual(
+            SQLReadyQuery.allCases.map(\.title),
+            ["SELECT", "SELECT (10 linhas)", "INSERT", "UPDATE", "DELETE"]
+        )
+    }
+
     func testConnectionConfigDefaults() {
         let config = ConnectionConfig()
         XCTAssertEqual(config.engine, .postgres)

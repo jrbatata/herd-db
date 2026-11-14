@@ -140,6 +140,25 @@ public enum SQLTokenizer {
                 continue
             }
 
+            // [name] SQL Server quoted identifier; doubled ]] escapes a bracket.
+            if unit == ascii("[") {
+                let start = index
+                index += 1
+                while index < count {
+                    if units[index] == ascii("]") {
+                        if index + 1 < count, units[index + 1] == ascii("]") {
+                            index += 2
+                            continue
+                        }
+                        index += 1
+                        break
+                    }
+                    index += 1
+                }
+                emit(.quotedIdentifier, from: start, to: index)
+                continue
+            }
+
             // number
             if isDigit(unit) {
                 let start = index
@@ -195,7 +214,7 @@ public enum SQLTokenizer {
         "NUMERIC", "OFFSET", "ON", "ONLY", "OR", "ORDER", "OUTER", "OVER", "PARTITION", "PRECISION",
         "PRIMARY", "REAL", "RECURSIVE", "REFERENCES", "REFRESH", "RESTRICT", "RETURNING", "REVOKE",
         "RIGHT", "ROLLBACK", "ROW", "ROWS", "SCHEMA", "SELECT", "SERIAL", "SET", "SMALLINT", "TABLE",
-        "TEMPORARY", "TEXT", "THEN", "TIME", "TIMESTAMP", "TIMESTAMPTZ", "TRANSACTION", "TRUE",
+        "TEMPORARY", "TEXT", "THEN", "TIME", "TIMESTAMP", "TIMESTAMPTZ", "TOP", "TRANSACTION", "TRUE",
         "TRUNCATE", "UNION", "UNIQUE", "UPDATE", "USING", "UUID", "VACUUM", "VALUES", "VARCHAR",
         "VIEW", "WHEN", "WHERE", "WINDOW", "WITH",
     ]

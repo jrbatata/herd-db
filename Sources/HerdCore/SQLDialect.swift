@@ -40,4 +40,50 @@ public struct SQLDialect: Sendable, Equatable {
             return "SELECT TOP \(limit) *\nFROM \(target);"
         }
     }
+
+    /// Ready-made query used by the sidebar's "Consultas prontas" menu.
+    public func readyQuery(_ query: SQLReadyQuery, schema: String?, table: String) -> String {
+        let target = qualify(schema: schema, table: table)
+        switch query {
+        case .select:
+            return "SELECT *\nFROM \(target);"
+        case .selectLimited:
+            return limitedSelect(schema: schema, table: table, limit: 10)
+        case .insert:
+            return """
+                INSERT INTO \(target) (coluna1, coluna2)
+                VALUES (valor1, valor2);
+                """
+        case .update:
+            return """
+                UPDATE \(target)
+                SET coluna1 = valor1
+                WHERE condicao;
+                """
+        case .delete:
+            return """
+                DELETE FROM \(target)
+                WHERE condicao;
+                """
+        }
+    }
+}
+
+public enum SQLReadyQuery: String, CaseIterable, Sendable {
+    case select
+    case selectLimited
+    case insert
+    case update
+    case delete
+
+
+    public var title: String {
+        switch self {
+        case .select: "SELECT"
+        case .selectLimited: "SELECT (10 linhas)"
+        case .insert: "INSERT"
+        case .update: "UPDATE"
+        case .delete: "DELETE"
+        }
+    }
 }
