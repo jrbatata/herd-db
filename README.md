@@ -1,26 +1,47 @@
-# herd-db
+<p align="center">
+  <img src="Resources/Branding/HerdIcon.png" width="112" alt="Ícone do Herd: um elefante estilizado sobre fundo azul">
+</p>
 
-Gerenciador de bancos nativo para macOS — PostgreSQL agora, SQL Server na fase 6.
-Interface em português, SwiftUI + AppKit, sem Electron.
+<h1 align="center">herd</h1>
+<p align="center"><strong>Seus bancos de dados, com a leveza do Mac.</strong></p>
+<p align="center">Explore schemas, escreva SQL com autocomplete e edite dados inline em um cliente PostgreSQL 100% nativo.</p>
+<p align="center">Nativo para macOS (SwiftUI + AppKit) &nbsp;·&nbsp; Interface em português &nbsp;·&nbsp; Senhas no Chaveiro</p>
 
-![Visão geral do Herd com uma conexão PostgreSQL, editor SQL e grid de resultados](docs/screenshots/visao-geral.png)
+![Visão geral do Herd com árvore de objetos na barra lateral, editor SQL e grid de resultados](docs/screenshots/visao-geral.png)
 
-<details>
-<summary>Mais capturas do aplicativo</summary>
+## Tudo à mão. Sem sair do fluxo.
 
-### Editor e resultados
+O Herd reúne árvore de objetos, editor SQL e resultados em uma janela rápida e silenciosa. Expanda um servidor na barra lateral para navegar por bancos, schemas, tabelas, views e colunas sob demanda — identificando chaves primárias e estrangeiras de imediato.
 
-![Editor SQL e grid com dados fictícios](docs/screenshots/editor-consulta.png)
+Dê dois cliques em uma tabela para abrir seus dados paginados ou abra quantas abas de script precisar. Os atalhos seguem o padrão do macOS e do VS Code (`⌘B` para a barra lateral, `⌘J` para os resultados e `⌥⌘B` para o histórico), deixando mais espaço para o que importa.
 
-### Nova conexão
+| Para trabalhar com…     | O Herd oferece…                                                                                        |
+| :---------------------- | :----------------------------------------------------------------------------------------------------- |
+| A estrutura do banco    | Árvore sob demanda, filtro instantâneo (`⇧⌘F`), inspetor de DDL (`⌘I`) e wizards nativos de criação.   |
+| Consultas e scripts SQL | Editor `NSTextView` com realce de sintaxe, formatação (`⇧⌥F`), snippets e autocomplete (`⌥Space`).     |
+| Os dados da tabela      | Edição inline com duplo clique, adição/remoção de linhas, revisão do SQL gerado e commit em transação. |
+| Rotinas de operação     | Backup e restore via `pg_dump`/`pg_restore`/`psql` e importação/exportação de CSV com log ao vivo.     |
+| Segurança e privacidade | Credenciais guardadas no Chaveiro do macOS, conexões locais em JSON (`0600`) e zero telemetria.        |
 
-![Formulário nativo para configurar uma conexão PostgreSQL](docs/screenshots/conexoes.png)
+## Escreva SQL, edite dados e revise antes de aplicar
 
-</details>
+O editor SQL executa o script inteiro, apenas o trecho selecionado ou o comando sob o cursor (`⌘↵`, `⇧⌘↵`, `⌥⌘↵`), com cancelamento real no servidor via `pg_cancel_backend` (`⌘.`). Quando um script retorna várias consultas, cada conjunto aparece em seu próprio painel redimensionável.
 
-**Estado:** fases 1, 2, 3, 4, 5 e 7 concluídas; fase 6 em standby; fase 8 em polimento final.
+No grid de resultados, dê dois cliques em qualquer célula para editar o valor na hora, adicione novas linhas no final navegando com `Tab` e `Enter`, ou selecione intervalos inteiros com `Shift`. Antes de gravar no banco, você pode revisar os comandos `INSERT`, `UPDATE` e `DELETE` gerados e aplicá-los em uma única transação.
+
+![Editor SQL e grid de dados com barra de ações rápidas para inserção, remoção, commit e exportação CSV](docs/screenshots/editor-consulta.png)
+
+## Conexões seguras no Chaveiro do macOS
+
+Cadastre servidores locais ou remotos em segundos, teste a conexão antes de salvar e ative SSL quando necessário. As configurações ficam em `Application Support` com permissão restrita ao seu usuário, enquanto as senhas são armazenadas diretamente no Chaveiro do macOS.
+
+![Formulário nativo para configurar e testar uma conexão PostgreSQL](docs/screenshots/conexoes.png)
+
+---
 
 ## Roadmap
+
+**Estado:** fases 1, 2, 3, 4, 5 e 7 concluídas; fase 6 em standby; fase 8 em polimento final.
 
 | Fase | Escopo                                             | Status             |
 | ---- | -------------------------------------------------- | ------------------ |
@@ -129,23 +150,19 @@ Interface em português, SwiftUI + AppKit, sem Electron.
 - [x] Gerar script CREATE/INSERT/UPDATE/DELETE/SELECT pelo menu da tabela
 - [x] Copiar nome do objeto (`⌥⌘C`) e atualizar nó (`⌘R`)
 
-### Fase 8 — Polimento e empacotamento 🚧
+### Fase 8 — Polimento, escala e empacotamento 🚧
 
 - [x] Ícone do app claro/escuro e ícones IconMCP na interface (com alternância outline/filled quando ativo)
 - [x] Barra de título compacta e janela com visual nativo (liquid glass)
 - [x] Menus de contexto 100% nativos, sem menus desenhados à mão
-- [x] `scripts/build-app.sh` com bundle, ícones e assinatura ad-hoc
+- [x] `scripts/build-app.sh` e `scripts/package-release.sh` com bundle `.app`, `.dmg`, `.zip`, ícones e assinatura ad-hoc
 - [x] Estados vazios, de erro e de carregamento definitivos em todas as telas
 - [x] Atalhos completos (`⌘B`, `⌥⌘B`, `⌘J`, `⌘E`, `⌘I`, `⌘F`, `⇧⌘F`, `⌥⌘F`, `⌃G`, `⇧⌥F`, `⌘/`, `⌘1…9`, `⌥⌘N`, `⌥⌘S`, `⌥⌘D`, `⇧⌘B/R`)
+- [ ] Streaming sob demanda / cursores para resultados de scripts livres acima de 20 000 linhas em memória e unificação da paginação local (100 linhas) com a paginação de servidor (500 linhas)
+- [ ] Resolver colunas de subconsultas e CTEs complexas no motor de autocomplete
+- [ ] Paginação e busca persistida no histórico de consultas além do limite atual de 200 entradas por conexão/banco
 - [ ] Revisão de acessibilidade
 - [ ] Notarização e distribuição
-
-## Limitações atuais
-
-- SQL Server permanece em standby (Fase 6) e aparece na lista de tipos como "em breve".
-- Resultados de scripts livres são limitados a 20 000 linhas em memória com paginação local de 100 linhas; tabelas abertas pela árvore usam paginação de 500 linhas, ordenação, filtro no servidor e edição transacional inline (`INSERT` / `UPDATE` / `DELETE`).
-- O autocomplete sugere objetos do banco (em todos os schemas), colunas, palavras-chave SQL e snippets; ainda não resolve colunas de subconsultas ou CTEs complexas.
-- Histórico limitado a 200 entradas por conexão/banco.
 
 ## Atalhos
 
@@ -183,15 +200,3 @@ Interface em português, SwiftUI + AppKit, sem Electron.
 | `⇧⌘I` / `⇧⌘E`                         | Importar / Exportar CSV da tabela                                                    |
 | `⌥⌘P`                                 | Ver aba de Processos                                                                 |
 | `⌥⇧⌘1` a `⌥⇧⌘6`                       | Scripts SQL: SELECT, SELECT 10, INSERT, UPDATE, DELETE, CREATE (DDL)                 |
-
-## Ações de objetos e processos
-
-O menu de contexto oferece wizards nativos do macOS para criação de bancos, schemas,
-tabelas e sub-objetos (com preview SQL em tempo real e execução direta), inspeção de
-estrutura/DDL (`⌘I`) e exclusão segura (`DROP`) com confirmação digitando o nome do objeto.
-Backups usam `pg_dump` (formato customizado `.dump` ou texto `.sql`); restauração usa
-`pg_restore --clean --if-exists` para `.dump` ou `psql --file` para `.sql`. Tabelas podem
-importar e exportar CSV via `psql`. A aba **Processos** mostra cada operação, saída completa
-(stdout + stderr), duração e botão de cancelamento. Essas ferramentas são detectadas
-automaticamente em `/opt/homebrew/opt/postgresql@{18,17,16}/bin`, `/opt/homebrew/bin`,
-`/usr/local/bin` ou `Postgres.app`.
