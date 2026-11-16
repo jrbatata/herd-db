@@ -356,7 +356,18 @@ public enum SQLCompletionEngine {
         }
 
         for word in sqlKeywords {
-            add(SQLCompletionItem(kind: .keyword, title: word, insertText: word))
+            if word == "WHERE" {
+                add(
+                    SQLCompletionItem(
+                        kind: .keyword,
+                        title: word,
+                        insertText: "WHERE ",
+                        detail: "condição"
+                    )
+                )
+            } else {
+                add(SQLCompletionItem(kind: .keyword, title: word, insertText: word))
+            }
         }
 
         return items

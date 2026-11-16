@@ -175,6 +175,19 @@ final class SQLCompletionEngineTests: XCTestCase {
         XCTAssertTrue(items.contains { $0.kind == .keyword && $0.title == "SELECT" })
     }
 
+    func testWhereKeywordCompletesWithConditionTemplate() {
+        let sql = "SELECT * FROM users WH"
+        let items = SQLCompletionEngine.suggestions(
+            in: sql,
+            at: (sql as NSString).length,
+            catalog: catalog
+        )
+
+        let whereItem = items.first { $0.kind == .keyword && $0.title == "WHERE" }
+        XCTAssertEqual(whereItem?.insertText, "WHERE ")
+        XCTAssertEqual(whereItem?.detail, "condição")
+    }
+
     func testSnippetCaretOffsetPointsAtTablePosition() {
         let inserts = SQLSnippets.items()
         guard let insert = inserts.first(where: { $0.title == "ins" }) else {
