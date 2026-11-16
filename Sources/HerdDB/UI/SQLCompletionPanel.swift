@@ -20,6 +20,7 @@ final class SQLCompletionController: NSObject, NSTableViewDataSource, NSTableVie
     private var task: Task<Void, Never>?
     private var generation = 0
     private var isInserting = false
+    private var dismissMonitor: Any?
 
     private let rowHeight: CGFloat = 24
     private let panelWidth: CGFloat = 340
@@ -42,6 +43,8 @@ final class SQLCompletionController: NSObject, NSTableViewDataSource, NSTableVie
         panel.hidesOnDeactivate = true
         panel.becomesKeyOnlyIfNeeded = true
         panel.collectionBehavior = [.transient, .ignoresCycle]
+        // The controller owns the panel; closing it must not release it.
+        panel.isReleasedWhenClosed = false
 
         effectView.material = .popover
         effectView.blendingMode = .behindWindow
@@ -79,10 +82,23 @@ final class SQLCompletionController: NSObject, NSTableViewDataSource, NSTableVie
         scrollView.documentView = tableView
         effectView.addSubview(scrollView)
         panel.contentView = effectView
+
+        // `hidesOnDeactivate` only hides the panel; it would come back when the
+        // app is reactivated. Close it for good instead.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationResignedActive),
+            name: NSApplication.didResignActiveNotification,
+            object: nil
+        )
     }
 
     deinit {
         task?.cancel()
+    }
+
+    @objc private func applicationResignedActive() {
+        close()
     }
 
     var isVisible: Bool { panel.isVisible }
@@ -140,6 +156,10 @@ final class SQLCompletionController: NSObject, NSTableViewDataSource, NSTableVie
 
             if items.isEmpty {
                 self.close()
+            } else if items.allSatisfy({ $0.completesNothing(for: context.prefix) }) {
+                // The typed prefix already matches every suggestion: accepting
+                // any of them would insert the same text again.
+                self.close()
             } else {
                 self.show(items, context: context)
             }
@@ -166,12 +186,36 @@ final class SQLCompletionController: NSObject, NSTableViewDataSource, NSTableVie
 
         if reposition() {
             panel.orderFrontRegardless()
+            installDismissMonitor()
         } else {
             close()
         }
     }
 
+    /// Closes the popup when the user clicks or scrolls anywhere outside it.
+    /// Clicking a sidebar button, for example, does not move the first responder
+    /// away from the text view, so focus changes alone are not enough.
+    private func installDismissMonitor() {
+        guard dismissMonitor == nil else { return }
+        dismissMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]
+        ) { [weak self] event in
+            guard let self else { return event }
+            if event.window === self.panel { return event }
+            self.close()
+            return event
+        }
+    }
+
+    private func removeDismissMonitor() {
+        if let dismissMonitor {
+            NSEvent.removeMonitor(dismissMonitor)
+        }
+        dismissMonitor = nil
+    }
+
     private func close() {
+        removeDismissMonitor()
         task?.cancel()
         task = nil
         generation += 1
@@ -249,7 +293,8 @@ final class SQLCompletionController: NSObject, NSTableViewDataSource, NSTableVie
         case 126:
             moveSelection(by: -1)
             return true
-        case 36, 48:
+        case 36, 48, 76:
+            // Return, Tab and the numeric keypad Enter.
             insertSelected()
             return true
         case 53:

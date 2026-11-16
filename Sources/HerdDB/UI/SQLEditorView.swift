@@ -73,6 +73,9 @@ struct SQLEditorView: NSViewRepresentable {
         textView.dialect = dialect
 
         if !coordinator.isEditing, textView.string != text {
+            // The text came from outside the editor (tab switch, clear, format),
+            // so any popup anchored to the old content is stale.
+            coordinator.completionController?.endEditing()
             textView.string = text
             coordinator.highlightNow()
             coordinator.ruler?.syncToText()
@@ -84,6 +87,13 @@ struct SQLEditorView: NSViewRepresentable {
             let limit = max(0, length - location)
             textView.setSelectedRange(NSRange(location: location, length: min(max(selection.length, 0), limit)))
         }
+    }
+
+    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
+        // The popup is a separate window: it survives the editor being removed
+        // unless it is closed explicitly (for example when switching tabs).
+        coordinator.completionController?.endEditing()
+        coordinator.completionController = nil
     }
 
     private func configure(_ textView: SQLTextView) {
@@ -208,6 +218,21 @@ final class SQLTextView: NSTextView {
 
     enum Action {
         case find, replace, goToLine, indent, unindent, comment, toggleCase, clear, format
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // Leaving the window (tab switch, editor rebuilt) must take the popup
+        // with it, since the popup lives in its own window.
+        if window == nil {
+            completionController?.endEditing()
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        // Clicking in the text means the user is done with the suggestions.
+        completionController?.endEditing()
+        super.mouseDown(with: event)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {

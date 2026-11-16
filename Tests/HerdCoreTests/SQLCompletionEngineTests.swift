@@ -383,4 +383,68 @@ final class SQLCompletionEngineTests: XCTestCase {
         XCTAssertEqual(vendas?.insertText, "pedidos")
         XCTAssertEqual(publicOrders?.insertText, "public.orders")
     }
+
+    // MARK: - Nothing left to complete
+
+    func testItemCompletesNothingWhenInsertTextMatchesPrefix() {
+        let table = SQLCompletionItem(
+            kind: .table,
+            title: "companies",
+            insertText: "companies",
+            detail: "public"
+        )
+
+        XCTAssertTrue(table.completesNothing(for: "companies"))
+        XCTAssertTrue(table.completesNothing(for: "Companies"))
+        XCTAssertFalse(table.completesNothing(for: "compan"))
+        XCTAssertFalse(table.completesNothing(for: ""))
+    }
+
+    func testConditionItemStillHasSomethingToInsertAfterColumnName() {
+        let column = SQLCompletionItem(
+            kind: .column,
+            title: "name",
+            insertText: "name = ''",
+            detail: "text",
+            caretOffset: 8
+        )
+
+        XCTAssertFalse(column.completesNothing(for: "name"))
+    }
+
+    func testSchemaQualifiedTableClosesWhenTypedByName() {
+        let table = SQLCompletionItem(
+            kind: .table,
+            title: "companies",
+            insertText: "bakery.companies",
+            detail: "bakery"
+        )
+
+        XCTAssertTrue(table.completesNothing(for: "companies"))
+        XCTAssertFalse(table.completesNothing(for: "compan"))
+    }
+
+    func testTypingFullTableNameLeavesNothingToComplete() {
+        let sql = "SELECT * FROM orders"
+        let items = SQLCompletionEngine.suggestions(
+            in: sql,
+            at: (sql as NSString).length,
+            catalog: catalog
+        )
+
+        XCTAssertFalse(items.isEmpty)
+        XCTAssertTrue(items.allSatisfy { $0.completesNothing(for: "orders") })
+    }
+
+    func testPartialTableNameStillHasCompletions() {
+        let sql = "SELECT * FROM order"
+        let items = SQLCompletionEngine.suggestions(
+            in: sql,
+            at: (sql as NSString).length,
+            catalog: catalog
+        )
+
+        XCTAssertFalse(items.isEmpty)
+        XCTAssertFalse(items.allSatisfy { $0.completesNothing(for: "order") })
+    }
 }

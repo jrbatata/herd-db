@@ -21,6 +21,22 @@ public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
 
     public var id: String { "\(kind.rawValue)|\(title)|\(insertText)|\(detail ?? "")" }
 
+    /// True when accepting this item would only reproduce `prefix`, so the
+    /// popup has nothing left to complete. Case-insensitive because the filter
+    /// that produced the item is case-insensitive too.
+    ///
+    /// An item whose title already matches the prefix still counts as useful
+    /// when it has a `caretOffset` (a snippet or a `column = ''` condition):
+    /// accepting it adds the surrounding template. Plain identifiers have no
+    /// caret offset, so typing the whole name means there is nothing left.
+    public func completesNothing(for prefix: String) -> Bool {
+        guard !prefix.isEmpty else { return false }
+        if insertText.caseInsensitiveCompare(prefix) == .orderedSame {
+            return true
+        }
+        return caretOffset == nil && title.caseInsensitiveCompare(prefix) == .orderedSame
+    }
+
     public init(
         kind: SQLCompletionKind,
         title: String,
