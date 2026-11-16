@@ -159,7 +159,7 @@ struct ConnectionSheet: View {
                 .padding(.leading, 4)
 
                 if !config.engine.isAvailable {
-                    Label { Text("O driver de SQL Server chega na fase 6. Por enquanto só PostgreSQL conecta.") } icon: { Icon(.info, size: 14) }
+                    Label { Text("O driver de SQL Server chega na fase 6. Por enquanto somente PostgreSQL conecta.") } icon: { Icon(.info, size: 14) }
                         .font(.system(size: 10.5))
                         .foregroundStyle(.secondary)
                 }

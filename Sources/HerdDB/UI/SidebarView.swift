@@ -260,7 +260,7 @@ struct TreeRowView: View {
             return tree.connectedIDs.contains(node.connectionID) ? .green : .red
         }
         if isSelected { return .white }
-        // Paleta enxuta: azul só no que é aberto/navegável (conexão, tabela, view),
+        // Paleta enxuta: azul somente no que é aberto/navegável (conexão, tabela, view),
         // âmbar nas chaves, o resto neutro.
         switch node.kind {
         case .table, .view:
