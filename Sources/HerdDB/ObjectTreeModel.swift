@@ -9,8 +9,10 @@ struct TreeNode: Identifiable, Hashable, Sendable {
         case schema
         case tablesFolder
         case viewsFolder
+        case routinesFolder
         case table
         case view
+        case routine
         case column
         case error
     }
@@ -24,12 +26,14 @@ struct TreeNode: Identifiable, Hashable, Sendable {
     var schema: String?
     var table: String?
     var column: ColumnInfo?
+    var routine: RoutineInfo?
 
     var isExpandable: Bool {
         switch kind {
-        case .connection, .database, .schema, .tablesFolder, .viewsFolder, .table, .view:
+        case .connection, .database, .schema, .tablesFolder, .viewsFolder, .routinesFolder,
+             .table, .view:
             true
-        case .column, .error:
+        case .routine, .column, .error:
             false
         }
     }
@@ -43,6 +47,7 @@ struct TreeNode: Identifiable, Hashable, Sendable {
         case .schema: .folder
         case .tablesFolder, .table: .table
         case .viewsFolder, .view: .view
+        case .routinesFolder, .routine: .newQuery
         case .column:
             if column?.isPrimaryKey == true { .key }
             else if column?.references != nil { .link }
@@ -267,7 +272,11 @@ final class ObjectTreeModel {
             return schemas.map { makeSchemaNode($0, parent: node) }
 
         case .schema:
-            return [makeFolderNode(.tablesFolder, parent: node), makeFolderNode(.viewsFolder, parent: node)]
+            return [
+                makeFolderNode(.tablesFolder, parent: node),
+                makeFolderNode(.viewsFolder, parent: node),
+                makeFolderNode(.routinesFolder, parent: node)
+            ]
 
         case .tablesFolder, .viewsFolder:
             guard let database = node.database, let schema = node.schema else { return [] }
@@ -276,6 +285,11 @@ final class ObjectTreeModel {
             return tables
                 .filter { ($0.kind == .view) == wantViews }
                 .map { makeTableNode($0, parent: node) }
+
+        case .routinesFolder:
+            guard let database = node.database, let schema = node.schema else { return [] }
+            let routines = try await driver.listRoutines(database: database, schema: schema)
+            return routines.map { makeRoutineNode($0, parent: node) }
 
         case .table, .view:
             guard
@@ -286,7 +300,7 @@ final class ObjectTreeModel {
             let columns = try await driver.listColumns(database: database, schema: schema, table: table)
             return columns.map { makeColumnNode($0, parent: node) }
 
-        case .column, .error:
+        case .routine, .column, .error:
             return []
         }
     }
@@ -317,11 +331,23 @@ final class ObjectTreeModel {
     }
 
     private func makeFolderNode(_ kind: TreeNode.Kind, parent: TreeNode) -> TreeNode {
-        let isViews = kind == .viewsFolder
+        let suffix: String
+        let title: String
+        switch kind {
+        case .viewsFolder:
+            suffix = "\u{1F}views"
+            title = "Views"
+        case .routinesFolder:
+            suffix = "\u{1F}routines"
+            title = "Funções e procedures"
+        default:
+            suffix = "\u{1F}tables"
+            title = "Tabelas"
+        }
         return TreeNode(
-            id: parent.id + (isViews ? "\u{1F}views" : "\u{1F}tables"),
+            id: parent.id + suffix,
             kind: kind,
-            title: isViews ? "Views" : "Tabelas",
+            title: title,
             detail: nil,
             connectionID: parent.connectionID,
             database: parent.database,
@@ -339,6 +365,19 @@ final class ObjectTreeModel {
             database: parent.database,
             schema: table.schema,
             table: table.name
+        )
+    }
+
+    private func makeRoutineNode(_ routine: RoutineInfo, parent: TreeNode) -> TreeNode {
+        TreeNode(
+            id: parent.id + "\u{1F}r\u{1F}\(routine.kind.rawValue)\u{1F}\(routine.name)",
+            kind: .routine,
+            title: routine.name,
+            detail: routine.kind.displayName,
+            connectionID: parent.connectionID,
+            database: parent.database,
+            schema: parent.schema,
+            routine: routine
         )
     }
 

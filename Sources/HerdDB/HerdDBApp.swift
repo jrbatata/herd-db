@@ -130,6 +130,9 @@ struct HerdCommands: Commands {
 
         CommandGroup(replacing: .toolbar) {}
 
+        // Remove o "Imprimir…" padrão para liberar ⌘P para a paleta.
+        CommandGroup(replacing: .printItem) {}
+
         CommandMenu("Script") {
             Button("Executar") {
                 workspace?.runActiveTab(scope: .automatic)
@@ -178,6 +181,18 @@ struct HerdCommands: Commands {
                 .keyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: .command)
                 .disabled((workspace?.tabs.count ?? 0) < (number == 9 ? 1 : number))
             }
+        }
+
+        CommandMenu("Ir") {
+            Button("Abrir Qualquer Coisa…") { workspace?.openPalette() }
+                .keyboardShortcut("p", modifiers: .command)
+                .disabled(workspace == nil)
+            Button("Abrir Banco…") { workspace?.openPalette(scope: .databases) }
+                .keyboardShortcut("k", modifiers: .command)
+                .disabled(workspace == nil)
+            Button("Abrir Conexão…") { workspace?.openPalette(scope: .connections) }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .disabled(workspace == nil)
         }
 
         CommandGroup(after: .sidebar) {

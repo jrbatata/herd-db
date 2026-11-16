@@ -32,6 +32,7 @@ enum NewDBObject: String, CaseIterable {
 final class WorkspaceState {
     let app: AppModel
     let tree: ObjectTreeModel
+    let palette: CommandPaletteModel
     let processes = DatabaseProcesses()
     let processesTabID = UUID()
 
@@ -59,6 +60,7 @@ final class WorkspaceState {
     init(app: AppModel) {
         self.app = app
         self.tree = ObjectTreeModel(app: app)
+        self.palette = CommandPaletteModel()
     }
 
     var activeTab: QueryTab? {
@@ -174,8 +176,128 @@ final class WorkspaceState {
         if node.kind == .table { tab?.sourceTable = table }
     }
 
-    func openReferencedRow(connectionID: UUID, database: String, reference: String, value: String) {
-        let parts = reference.split(separator: ".").map(String.init)
+    /// Opens the "Abrir Qualquer Coisa" palette with a given scope.
+    func openPalette(scope: CommandPaletteScope = .all) {
+        palette.present(scope: scope, workspace: self)
+    }
+
+    /// Opens a table/view chosen in the palette. Return reuses an empty script tab;
+    /// ⌘↵ always opens a new one.
+    func openPaletteTable(
+        connectionID: UUID,
+        database: String,
+        schema: String,
+        table: String,
+        isTable: Bool,
+        newTab: Bool
+    ) {
+        guard let config = app.connections.connection(id: connectionID) else { return }
+        let dialect = engineDialect(config.engine)
+        let sql = dialect.limitedSelect(schema: schema, table: table, limit: 500)
+
+        if !newTab,
+           let active = activeTab,
+           active.connectionID == connectionID,
+           active.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            active.sql = sql
+            active.database = database
+            active.title = table
+            active.sourceTable = isTable ? table : nil
+            active.browseSQL = isTable ? sql : nil
+            activeTabID = active.id
+            if isTable { active.browseTable(app: app, page: 0) }
+            return
+        }
+
+        let context = QueryContext(
+            connectionID: connectionID,
+            connectionName: config.name,
+            database: database,
+            schema: schema
+        )
+        let tab = newQueryTab(context: context, sql: sql, title: table)
+        if isTable {
+            tab?.sourceTable = table
+            tab?.browseSQL = sql
+        }
+    }
+
+    func openRoutineCall(_ node: TreeNode) {
+        guard node.kind == .routine,
+              let routine = node.routine,
+              let database = node.database else { return }
+        openRoutineCall(
+            connectionID: node.connectionID,
+            database: database,
+            schema: routine.schema,
+            name: routine.name,
+            isProcedure: routine.kind == .procedure
+        )
+    }
+
+    func openRoutineCall(
+        connectionID: UUID,
+        database: String,
+        schema: String,
+        name: String,
+        isProcedure: Bool
+    ) {
+        guard let config = app.connections.connection(id: connectionID) else { return }
+        let dialect = engineDialect(config.engine)
+        let qualified = dialect.qualify(schema: schema, table: name)
+        let sql = isProcedure ? "CALL \(qualified)(...);" : "SELECT \(qualified)(...);"
+        let context = QueryContext(
+            connectionID: connectionID,
+            connectionName: config.name,
+            database: database,
+            schema: schema
+        )
+        newQueryTab(context: context, sql: sql, title: name)
+    }
+
+    /// Selects and expands a connection in the sidebar.
+    func revealConnection(_ id: UUID) {
+        sidebarVisible = true
+        guard let node = tree.node(withID: "c/\(id.uuidString)") else { return }
+        tree.select(node)
+        tree.expand(node)
+    }
+
+    /// Backup for the selected database/table, or for the active tab's database.
+    func presentBackupForSelection() {
+        if let node = selectedNode, node.kind == .database || node.kind == .table {
+            presentBackup(for: node)
+            return
+        }
+        guard let node = activeDatabaseNode() else { return }
+        presentBackup(for: node)
+    }
+
+    /// Restore for the selected database, or for the active tab's database.
+    func presentRestoreForSelection() {
+        if let node = selectedNode, node.kind == .database {
+            presentRestore(for: node)
+            return
+        }
+        guard let node = activeDatabaseNode() else { return }
+        presentRestore(for: node)
+    }
+
+    private func activeDatabaseNode() -> TreeNode? {
+        guard let tab = activeTab,
+              let config = app.connections.connection(id: tab.connectionID) else { return nil }
+        let id = "c/\(config.id.uuidString)\u{1F}d\u{1F}\(tab.database)"
+        return tree.node(withID: id) ?? TreeNode(
+            id: "palette/db/\(config.id.uuidString)/\(tab.database)",
+            kind: .database,
+            title: tab.database,
+            detail: nil,
+            connectionID: config.id,
+            database: tab.database
+        )
+    }
+
+    func openReferencedRow(connectionID: UUID, database: String, reference: String, value: String) {        let parts = reference.split(separator: ".").map(String.init)
         guard parts.count == 3,
               let config = app.connections.connection(id: connectionID) else { return }
         let refSchema = parts[0]
@@ -199,8 +321,7 @@ final class WorkspaceState {
         }
     }
 
-    func openInsertScript(for tab: QueryTab) {
-        guard let table = tab.sourceTable,
+    func openInsertScript(for tab: QueryTab) {        guard let table = tab.sourceTable,
               let config = app.connections.connection(id: tab.connectionID) else { return }
         let context = QueryContext(connectionID: tab.connectionID,
                                    connectionName: tab.connectionName,

@@ -106,11 +106,13 @@ public actor PostgresDriver: DatabaseDriver {
         let client = try await connectClient(database)
         do {
             let rows = try await client.query("""
-                SELECT table_name, table_type
-                FROM information_schema.tables
-                WHERE table_schema = \(schema)
-                  AND table_type IN ('BASE TABLE', 'VIEW')
-                ORDER BY table_name;
+                SELECT c.relname,
+                       CASE c.relkind WHEN 'v' THEN 'view' WHEN 'm' THEN 'view' ELSE 'table' END
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = \(schema)
+                  AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+                ORDER BY c.relname;
                 """)
             var result: [TableInfo] = []
             for try await row in rows {
@@ -119,9 +121,79 @@ public actor PostgresDriver: DatabaseDriver {
                     TableInfo(
                         schema: schema,
                         name: name,
-                        kind: type == "VIEW" ? .view : .table
+                        kind: type == "view" ? .view : .table
                     )
                 )
+            }
+            return result
+        } catch {
+            throw HerdError.queryFailed(Self.describe(error))
+        }
+    }
+
+    public func listRoutines(database: String, schema: String) async throws -> [RoutineInfo] {
+        let client = try await connectClient(database)
+        do {
+            let rows = try await client.query("""
+                SELECT p.proname,
+                       CASE p.prokind WHEN 'p' THEN 'procedure' ELSE 'function' END
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = \(schema)
+                  AND p.prokind IN ('f', 'p')
+                ORDER BY p.proname;
+                """)
+            var result: [RoutineInfo] = []
+            for try await row in rows {
+                let (name, kind) = try row.decode((String, String).self)
+                result.append(
+                    RoutineInfo(
+                        schema: schema,
+                        name: name,
+                        kind: kind == "procedure" ? .procedure : .function
+                    )
+                )
+            }
+            return result
+        } catch {
+            throw HerdError.queryFailed(Self.describe(error))
+        }
+    }
+
+    public func listObjects(database: String) async throws -> [DatabaseObject] {
+        let client = try await connectClient(database)
+        do {
+            let rows = try await client.query("""
+                SELECT n.nspname,
+                       c.relname,
+                       CASE c.relkind
+                           WHEN 'v' THEN 'view'
+                           WHEN 'm' THEN 'materializedView'
+                           ELSE 'table'
+                       END
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
+                  AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+                UNION ALL
+                SELECT n.nspname,
+                       p.proname,
+                       CASE p.prokind WHEN 'p' THEN 'procedure' ELSE 'function' END
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
+                  AND p.prokind IN ('f', 'p')
+                ORDER BY 1, 2;
+                """)
+            var seen = Set<String>()
+            var result: [DatabaseObject] = []
+            for try await row in rows {
+                let (schema, name, kind) = try row.decode((String, String, String).self)
+                guard let objectKind = DatabaseObjectKind(rawValue: kind) else { continue }
+                let object = DatabaseObject(schema: schema, name: name, kind: objectKind)
+                // Funções sobrecarregadas repetem schema/nome: a paleta mostra uma vez.
+                guard seen.insert(object.id).inserted else { continue }
+                result.append(object)
             }
             return result
         } catch {

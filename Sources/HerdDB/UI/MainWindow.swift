@@ -56,6 +56,12 @@ struct MainWindow: View {
             .ignoresSafeArea()
 
             if !isFullScreen { sidebarToggle }
+
+            if workspace.palette.isPresented {
+                CommandPaletteOverlay(palette: workspace.palette)
+                    .transition(.opacity)
+                    .zIndex(100)
+            }
         }
         .background(WindowConfigurator(
             onFullScreenChange: { isFullScreen = $0 },

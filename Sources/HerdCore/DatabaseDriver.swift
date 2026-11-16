@@ -12,6 +12,10 @@ public protocol DatabaseDriver: Sendable {
     func listSchemas(database: String) async throws -> [SchemaInfo]
     func listTables(database: String, schema: String) async throws -> [TableInfo]
     func listColumns(database: String, schema: String, table: String) async throws -> [ColumnInfo]
+    /// Functions and procedures of one schema; used by the sidebar and the palette.
+    func listRoutines(database: String, schema: String) async throws -> [RoutineInfo]
+    /// Every table, view, materialized view and routine of a database.
+    func listObjects(database: String) async throws -> [DatabaseObject]
 
     /// Snapshot of schemas, tables and columns used by autocomplete.
     func catalog(database: String) async throws -> SQLCatalog
@@ -44,5 +48,29 @@ public extension DatabaseDriver {
 
     func listCatalogColumns(database: String) async throws -> [CatalogColumn] {
         []
+    }
+
+    func listRoutines(database: String, schema: String) async throws -> [RoutineInfo] {
+        []
+    }
+
+    func listObjects(database: String) async throws -> [DatabaseObject] {
+        let schemas = try await listSchemas(database: database).map(\.name)
+        var objects: [DatabaseObject] = []
+        for schema in schemas {
+            let tables = try await listTables(database: database, schema: schema)
+            objects.append(contentsOf: tables.map {
+                DatabaseObject(
+                    schema: $0.schema,
+                    name: $0.name,
+                    kind: $0.kind == .view ? .view : .table
+                )
+            })
+            let routines = try await listRoutines(database: database, schema: schema)
+            objects.append(contentsOf: routines.map {
+                DatabaseObject(schema: $0.schema, name: $0.name, kind: $0.kind.objectKind)
+            })
+        }
+        return objects
     }
 }

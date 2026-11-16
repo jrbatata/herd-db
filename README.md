@@ -181,11 +181,11 @@ Itens inspirados na documentação do TablePlus, em ordem de prioridade. Cada it
 
 #### 9.2 Abrir Qualquer Coisa — `⌘P` (prioridade 2)
 
-- [ ] Paleta de busca fuzzy sobre bancos, schemas, tabelas, views, views materializadas, funções/procedures, queries salvas e ações do app
-- [ ] `Return` abre o item; `⌘↵` abre a tabela em nova aba; `↑`/`↓` (e `⌃P`/`⌃N`) navegam; `Tab` completa; `Esc` limpa e, no segundo toque, fecha
-- [ ] Prefixo `^` (início do nome), sufixo `$` (fim) e os dois juntos (nome exato)
-- [ ] Listar funções e procedures na árvore de objetos, pois a busca precisa alcançá-las
-- [ ] Ações com atalho: Abrir Conexão (`⇧⌘K`), Abrir Banco (`⌘K`), Backup, Restore, Cancelar Consultas, Configurações
+- [x] Paleta de busca fuzzy sobre bancos, schemas, tabelas, views, views materializadas, funções/procedures, consultas recentes (as favoritas ficam na 9.5) e ações do app
+- [x] `Return` abre o item; `⌘↵` abre a tabela em nova aba; `↑`/`↓` (e `⌃P`/`⌃N`) navegam; `Tab` completa; `Esc` limpa e, no segundo toque, fecha
+- [x] Prefixo `^` (início do nome), sufixo `$` (fim) e os dois juntos (nome exato)
+- [x] Listar funções e procedures na árvore de objetos, pois a busca precisa alcançá-las
+- [x] Ações com atalho: Abrir Conexão (`⇧⌘K`), Abrir Banco (`⌘K`), Backup, Restore, Cancelar Consultas, Configurações
 
 #### 9.3 Console de log — `⌃⌘C` (prioridade 3)
 
@@ -254,6 +254,8 @@ Comparação com as páginas Editor Basics, Filter e Import & Export do TablePlu
 | `⌘1` a `⌘9`                           | Alternar entre abas abertas (`⌘9` vai para a última aba)                             |
 | `⇧⌘N`                                 | Nova conexão                                                                         |
 | `⌘O`                                  | Abrir arquivo SQL                                                                    |
+| `⌘P`                                  | Abrir Qualquer Coisa (busca fuzzy em objetos, bancos e ações)                        |
+| `⌘K` / `⇧⌘K`                          | Abrir banco / Abrir conexão                                                          |
 | `⌘S` / `⇧⌘S`                          | Salvar / salvar como arquivo SQL                                                     |
 | `⌘F`                                  | Buscar no editor SQL (ou filtrar objetos na sidebar quando o editor não está focado) |
 | `⌥⌘F`                                 | Substituir no editor SQL                                                             |

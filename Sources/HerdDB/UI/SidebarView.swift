@@ -265,7 +265,7 @@ struct TreeRowView: View {
         switch node.kind {
         case .table, .view:
             return .accentColor
-        case .database, .schema, .tablesFolder, .viewsFolder:
+        case .database, .schema, .tablesFolder, .viewsFolder, .routinesFolder, .routine:
             return .secondary
         case .column:
             if node.column?.isPrimaryKey == true { return .orange }
@@ -280,6 +280,8 @@ struct TreeRowView: View {
         switch node.kind {
         case .table, .view:
             workspace.openTable(node)
+        case .routine:
+            workspace.openRoutineCall(node)
         case .error:
             tree.retry(afterErrorNode: node)
         default:
@@ -375,7 +377,7 @@ struct TreeRowView: View {
             Button("Atualizar") { tree.reload(node) }
                 .keyboardShortcut("r", modifiers: .command)
 
-        case .database, .schema, .tablesFolder, .viewsFolder:
+        case .database, .schema, .tablesFolder, .viewsFolder, .routinesFolder:
             Button("Novo script") { workspace.newQueryTab(for: node) }
                 .keyboardShortcut("t", modifiers: .command)
             if node.kind == .database || node.kind == .schema || node.kind == .tablesFolder {
@@ -408,6 +410,15 @@ struct TreeRowView: View {
                 Button("Ver processos…") { workspace.openProcesses() }
                     .keyboardShortcut("p", modifiers: [.command, .option])
             }
+            Divider()
+            Button("Copiar nome") { copy(node.title) }
+                .keyboardShortcut("c", modifiers: [.command, .option])
+            Button("Atualizar") { tree.reload(node) }
+                .keyboardShortcut("r", modifiers: .command)
+
+        case .routine:
+            Button("Abrir chamada no editor") { workspace.openRoutineCall(node) }
+                .keyboardShortcut(.return, modifiers: [])
             Divider()
             Button("Copiar nome") { copy(node.title) }
                 .keyboardShortcut("c", modifiers: [.command, .option])
