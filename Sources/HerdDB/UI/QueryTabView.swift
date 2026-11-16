@@ -368,14 +368,19 @@ struct QueryTabView: View {
             database: tab.database,
             driver: driver
         ) ?? SQLCatalog()
+        let defaultSchema = tab.schema
+        let dialect = driver.dialect
 
-        return SQLCompletionEngine.suggestions(
-            for: context,
-            in: sql,
-            catalog: catalog,
-            defaultSchema: tab.schema,
-            dialect: driver.dialect
-        )
+        return await Task.detached(priority: .userInitiated) {
+            guard !Task.isCancelled else { return [] }
+            return SQLCompletionEngine.suggestions(
+                for: context,
+                in: sql,
+                catalog: catalog,
+                defaultSchema: defaultSchema,
+                dialect: dialect
+            )
+        }.value
     }
 }
 
