@@ -5,10 +5,12 @@ import Observation
 @MainActor
 public final class DriverRegistry {
     private let store: ConnectionStore
+    private let recorder: QueryLogRecorder?
     private var drivers: [UUID: any DatabaseDriver] = [:]
 
-    public init(store: ConnectionStore) {
+    public init(store: ConnectionStore, recorder: QueryLogRecorder? = nil) {
         self.store = store
+        self.recorder = recorder
     }
 
     public func driver(for config: ConnectionConfig) -> any DatabaseDriver {
@@ -17,7 +19,11 @@ public final class DriverRegistry {
         let driver: any DatabaseDriver
         switch config.engine {
         case .postgres:
-            driver = PostgresDriver(config: config, password: store.password(for: config.id))
+            driver = PostgresDriver(
+                config: config,
+                password: store.password(for: config.id),
+                recorder: recorder
+            )
         case .sqlServer:
             driver = UnsupportedDriver(engine: .sqlServer)
         }

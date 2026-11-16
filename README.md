@@ -249,9 +249,9 @@ Itens inspirados na documentação do TablePlus, em ordem de prioridade. Cada it
 
 #### 9.3 Console de log — `⌃⌘C` (prioridade 3)
 
-- [ ] Painel inferior com todas as consultas enviadas ao servidor, inclusive as internas (catálogo, paginação, commit do grid), com horário
-- [ ] Limite de 1.000 entradas, realce de sintaxe opcional, botão "Limpar" e substituição de consultas muito grandes por uma nota resumida
-- [ ] Separado do histórico, que continua guardando apenas o que o usuário executa
+- [x] Painel inferior com todas as consultas enviadas ao servidor, inclusive as internas (catálogo, paginação, commit do grid), com horário
+- [x] Limite de 1.000 entradas, realce de sintaxe opcional, botão "Limpar" e substituição de consultas muito grandes por uma nota resumida
+- [x] Separado do histórico, que continua guardando apenas o que o usuário executa
 
 #### 9.4 Processos ao vivo e cancelamento por sessão (prioridade 4)
 
@@ -330,6 +330,7 @@ Comparação com as páginas Editor Basics, Filter e Import & Export do TablePlu
 | `⌘B`                                  | Alternar barra lateral (padrão VS Code)                                              |
 | `⌥⌘B`                                 | Alternar inspetor de histórico (padrão VS Code)                                      |
 | `⌘J`                                  | Alternar painel inferior de resultados (padrão VS Code)                              |
+| `⌃⌘C`                                 | Alternar console de log (consultas enviadas ao servidor)                             |
 | `⌘I`                                  | Estrutura / DDL da tabela selecionada                                                |
 | `⌘R`                                  | Atualizar árvore / nó selecionado                                                    |
 | `⌥⌘D` / `⌥⌘N` / `⌥⌘S`                 | Criar Banco de dados / Tabela / Schema (wizards nativos)                             |

@@ -333,7 +333,7 @@ struct QueryTabView: View {
                 }
                 let driver = app.drivers.driver(for: config)
                 let txSQL = (["BEGIN;"] + statements + ["COMMIT;"]).joined(separator: "\n")
-                _ = try await driver.run(txSQL, database: tab.database)
+                _ = try await driver.run(txSQL, database: tab.database, source: .commit)
                 let currentPage = tab.tablePage?.page ?? 0
                 tab.browseTable(app: app, page: currentPage)
             },

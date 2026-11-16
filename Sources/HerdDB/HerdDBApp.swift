@@ -215,6 +215,10 @@ struct HerdCommands: Commands {
                 .keyboardShortcut("j", modifiers: .command)
                 .disabled(workspace?.activeTab == nil)
 
+            Button("Alternar console") { workspace?.toggleConsole() }
+                .keyboardShortcut("c", modifiers: [.control, .command])
+                .disabled(workspace == nil)
+
             Divider()
 
             Button("Estrutura da tabela…") {

@@ -10,12 +10,14 @@ public actor PostgresDriver: DatabaseDriver {
 
     private let config: ConnectionConfig
     private let password: String?
+    private let recorder: QueryLogRecorder?
     private var clients: [String: PostgresClient] = [:]
     private var runners: [String: Task<Void, Never>] = [:]
 
-    public init(config: ConnectionConfig, password: String?) {
+    public init(config: ConnectionConfig, password: String?, recorder: QueryLogRecorder? = nil) {
         self.config = config
         self.password = password
+        self.recorder = recorder
     }
 
     // MARK: - Connection
@@ -43,7 +45,7 @@ public actor PostgresDriver: DatabaseDriver {
         return client
     }
 
-    private func normalizedDatabase(_ database: String?) -> String {
+    private nonisolated func normalizedDatabase(_ database: String?) -> String {
         let trimmed = (database ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? config.maintenanceDatabase : trimmed
     }
@@ -52,13 +54,21 @@ public actor PostgresDriver: DatabaseDriver {
 
     public func test() async throws -> ServerInfo {
         let client = try await client(for: config.maintenanceDatabase)
+        let query: PostgresQuery = "SELECT version()"
         do {
-            let rows = try await client.query("SELECT version()")
-            for try await row in rows {
-                let version = try row.decode(String.self)
-                return ServerInfo(version: version)
+            return try await record(
+                query.sql,
+                database: config.maintenanceDatabase,
+                source: .system,
+                rowCount: { _ in 1 }
+            ) {
+                let rows = try await client.query(query, logger: Self.logger)
+                for try await row in rows {
+                    let version = try row.decode(String.self)
+                    return ServerInfo(version: version)
+                }
+                throw HerdError.connectionFailed("O servidor não retornou a versão.")
             }
-            throw HerdError.connectionFailed("O servidor não retornou a versão.")
         } catch {
             throw HerdError.connectionFailed(Self.describe(error))
         }
@@ -66,18 +76,26 @@ public actor PostgresDriver: DatabaseDriver {
 
     public func listDatabases() async throws -> [DatabaseInfo] {
         let client = try await connectClient(config.maintenanceDatabase)
+        let query: PostgresQuery = """
+            SELECT datname
+            FROM pg_database
+            WHERE datallowconn AND NOT datistemplate
+            ORDER BY datname;
+            """
         do {
-            let rows = try await client.query("""
-                SELECT datname
-                FROM pg_database
-                WHERE datallowconn AND NOT datistemplate
-                ORDER BY datname;
-                """)
-            var result: [DatabaseInfo] = []
-            for try await row in rows {
-                result.append(DatabaseInfo(name: try row.decode(String.self)))
+            return try await record(
+                query.sql,
+                database: config.maintenanceDatabase,
+                source: .catalog,
+                rowCount: { $0.count }
+            ) {
+                let rows = try await client.query(query, logger: Self.logger)
+                var result: [DatabaseInfo] = []
+                for try await row in rows {
+                    result.append(DatabaseInfo(name: try row.decode(String.self)))
+                }
+                return result
             }
-            return result
         } catch {
             throw HerdError.queryFailed(Self.describe(error))
         }
@@ -85,18 +103,26 @@ public actor PostgresDriver: DatabaseDriver {
 
     public func listSchemas(database: String) async throws -> [SchemaInfo] {
         let client = try await connectClient(database)
+        let query: PostgresQuery = """
+            SELECT nspname
+            FROM pg_namespace
+            WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'
+            ORDER BY nspname;
+            """
         do {
-            let rows = try await client.query("""
-                SELECT nspname
-                FROM pg_namespace
-                WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'
-                ORDER BY nspname;
-                """)
-            var result: [SchemaInfo] = []
-            for try await row in rows {
-                result.append(SchemaInfo(name: try row.decode(String.self)))
+            return try await record(
+                query.sql,
+                database: database,
+                source: .catalog,
+                rowCount: { $0.count }
+            ) {
+                let rows = try await client.query(query, logger: Self.logger)
+                var result: [SchemaInfo] = []
+                for try await row in rows {
+                    result.append(SchemaInfo(name: try row.decode(String.self)))
+                }
+                return result
             }
-            return result
         } catch {
             throw HerdError.queryFailed(Self.describe(error))
         }
@@ -104,28 +130,36 @@ public actor PostgresDriver: DatabaseDriver {
 
     public func listTables(database: String, schema: String) async throws -> [TableInfo] {
         let client = try await connectClient(database)
+        let query: PostgresQuery = """
+            SELECT c.relname,
+                   CASE c.relkind WHEN 'v' THEN 'view' WHEN 'm' THEN 'view' ELSE 'table' END
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = \(schema)
+              AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+            ORDER BY c.relname;
+            """
         do {
-            let rows = try await client.query("""
-                SELECT c.relname,
-                       CASE c.relkind WHEN 'v' THEN 'view' WHEN 'm' THEN 'view' ELSE 'table' END
-                FROM pg_class c
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE n.nspname = \(schema)
-                  AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
-                ORDER BY c.relname;
-                """)
-            var result: [TableInfo] = []
-            for try await row in rows {
-                let (name, type) = try row.decode((String, String).self)
-                result.append(
-                    TableInfo(
-                        schema: schema,
-                        name: name,
-                        kind: type == "view" ? .view : .table
+            return try await record(
+                query.sql,
+                database: database,
+                source: .catalog,
+                rowCount: { $0.count }
+            ) {
+                let rows = try await client.query(query, logger: Self.logger)
+                var result: [TableInfo] = []
+                for try await row in rows {
+                    let (name, type) = try row.decode((String, String).self)
+                    result.append(
+                        TableInfo(
+                            schema: schema,
+                            name: name,
+                            kind: type == "view" ? .view : .table
+                        )
                     )
-                )
+                }
+                return result
             }
-            return result
         } catch {
             throw HerdError.queryFailed(Self.describe(error))
         }
@@ -133,28 +167,36 @@ public actor PostgresDriver: DatabaseDriver {
 
     public func listRoutines(database: String, schema: String) async throws -> [RoutineInfo] {
         let client = try await connectClient(database)
+        let query: PostgresQuery = """
+            SELECT p.proname,
+                   CASE p.prokind WHEN 'p' THEN 'procedure' ELSE 'function' END
+            FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = \(schema)
+              AND p.prokind IN ('f', 'p')
+            ORDER BY p.proname;
+            """
         do {
-            let rows = try await client.query("""
-                SELECT p.proname,
-                       CASE p.prokind WHEN 'p' THEN 'procedure' ELSE 'function' END
-                FROM pg_proc p
-                JOIN pg_namespace n ON n.oid = p.pronamespace
-                WHERE n.nspname = \(schema)
-                  AND p.prokind IN ('f', 'p')
-                ORDER BY p.proname;
-                """)
-            var result: [RoutineInfo] = []
-            for try await row in rows {
-                let (name, kind) = try row.decode((String, String).self)
-                result.append(
-                    RoutineInfo(
-                        schema: schema,
-                        name: name,
-                        kind: kind == "procedure" ? .procedure : .function
+            return try await record(
+                query.sql,
+                database: database,
+                source: .catalog,
+                rowCount: { $0.count }
+            ) {
+                let rows = try await client.query(query, logger: Self.logger)
+                var result: [RoutineInfo] = []
+                for try await row in rows {
+                    let (name, kind) = try row.decode((String, String).self)
+                    result.append(
+                        RoutineInfo(
+                            schema: schema,
+                            name: name,
+                            kind: kind == "procedure" ? .procedure : .function
+                        )
                     )
-                )
+                }
+                return result
             }
-            return result
         } catch {
             throw HerdError.queryFailed(Self.describe(error))
         }
@@ -162,40 +204,48 @@ public actor PostgresDriver: DatabaseDriver {
 
     public func listObjects(database: String) async throws -> [DatabaseObject] {
         let client = try await connectClient(database)
+        let query: PostgresQuery = """
+            SELECT n.nspname,
+                   c.relname,
+                   CASE c.relkind
+                       WHEN 'v' THEN 'view'
+                       WHEN 'm' THEN 'materializedView'
+                       ELSE 'table'
+                   END
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
+              AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+            UNION ALL
+            SELECT n.nspname,
+                   p.proname,
+                   CASE p.prokind WHEN 'p' THEN 'procedure' ELSE 'function' END
+            FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
+              AND p.prokind IN ('f', 'p')
+            ORDER BY 1, 2;
+            """
         do {
-            let rows = try await client.query("""
-                SELECT n.nspname,
-                       c.relname,
-                       CASE c.relkind
-                           WHEN 'v' THEN 'view'
-                           WHEN 'm' THEN 'materializedView'
-                           ELSE 'table'
-                       END
-                FROM pg_class c
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
-                  AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
-                UNION ALL
-                SELECT n.nspname,
-                       p.proname,
-                       CASE p.prokind WHEN 'p' THEN 'procedure' ELSE 'function' END
-                FROM pg_proc p
-                JOIN pg_namespace n ON n.oid = p.pronamespace
-                WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
-                  AND p.prokind IN ('f', 'p')
-                ORDER BY 1, 2;
-                """)
-            var seen = Set<String>()
-            var result: [DatabaseObject] = []
-            for try await row in rows {
-                let (schema, name, kind) = try row.decode((String, String, String).self)
-                guard let objectKind = DatabaseObjectKind(rawValue: kind) else { continue }
-                let object = DatabaseObject(schema: schema, name: name, kind: objectKind)
-                // Funções sobrecarregadas repetem schema/nome: a paleta mostra uma vez.
-                guard seen.insert(object.id).inserted else { continue }
-                result.append(object)
+            return try await record(
+                query.sql,
+                database: database,
+                source: .catalog,
+                rowCount: { $0.count }
+            ) {
+                let rows = try await client.query(query, logger: Self.logger)
+                var seen = Set<String>()
+                var result: [DatabaseObject] = []
+                for try await row in rows {
+                    let (schema, name, kind) = try row.decode((String, String, String).self)
+                    guard let objectKind = DatabaseObjectKind(rawValue: kind) else { continue }
+                    let object = DatabaseObject(schema: schema, name: name, kind: objectKind)
+                    // Funções sobrecarregadas repetem schema/nome: a paleta mostra uma vez.
+                    guard seen.insert(object.id).inserted else { continue }
+                    result.append(object)
+                }
+                return result
             }
-            return result
         } catch {
             throw HerdError.queryFailed(Self.describe(error))
         }
@@ -203,53 +253,61 @@ public actor PostgresDriver: DatabaseDriver {
 
     public func listColumns(database: String, schema: String, table: String) async throws -> [ColumnInfo] {
         let client = try await connectClient(database)
+        let query: PostgresQuery = """
+            SELECT a.attname AS name,
+                   format_type(a.atttypid, a.atttypmod) AS data_type,
+                   NOT a.attnotnull AS is_nullable,
+                   EXISTS (
+                       SELECT 1
+                       FROM pg_index i
+                       WHERE i.indrelid = c.oid
+                         AND i.indisprimary
+                         AND a.attnum = ANY(i.indkey)
+                   ) AS is_pk,
+                   (
+                       SELECT fn.nspname || '.' || ft.relname || '.' || fa.attname
+                       FROM pg_constraint con
+                       JOIN pg_class ft ON ft.oid = con.confrelid
+                       JOIN pg_namespace fn ON fn.oid = ft.relnamespace
+                       JOIN pg_attribute fa ON fa.attrelid = ft.oid AND fa.attnum = con.confkey[1]
+                       WHERE con.contype = 'f'
+                         AND con.conrelid = c.oid
+                         AND a.attnum = ANY(con.conkey)
+                       LIMIT 1
+                   ) AS references
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_attribute a ON a.attrelid = c.oid
+            WHERE n.nspname = \(schema)
+              AND c.relname = \(table)
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            ORDER BY a.attnum;
+            """
         do {
-            let rows = try await client.query("""
-                SELECT a.attname AS name,
-                       format_type(a.atttypid, a.atttypmod) AS data_type,
-                       NOT a.attnotnull AS is_nullable,
-                       EXISTS (
-                           SELECT 1
-                           FROM pg_index i
-                           WHERE i.indrelid = c.oid
-                             AND i.indisprimary
-                             AND a.attnum = ANY(i.indkey)
-                       ) AS is_pk,
-                       (
-                           SELECT fn.nspname || '.' || ft.relname || '.' || fa.attname
-                           FROM pg_constraint con
-                           JOIN pg_class ft ON ft.oid = con.confrelid
-                           JOIN pg_namespace fn ON fn.oid = ft.relnamespace
-                           JOIN pg_attribute fa ON fa.attrelid = ft.oid AND fa.attnum = con.confkey[1]
-                           WHERE con.contype = 'f'
-                             AND con.conrelid = c.oid
-                             AND a.attnum = ANY(con.conkey)
-                           LIMIT 1
-                       ) AS references
-                FROM pg_class c
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                JOIN pg_attribute a ON a.attrelid = c.oid
-                WHERE n.nspname = \(schema)
-                  AND c.relname = \(table)
-                  AND a.attnum > 0
-                  AND NOT a.attisdropped
-                ORDER BY a.attnum;
-                """)
-            var result: [ColumnInfo] = []
-            for try await row in rows {
-                let (name, dataType, nullable, isPK, references) =
-                    try row.decode((String, String, Bool, Bool, String?).self)
-                result.append(
-                    ColumnInfo(
-                        name: name,
-                        dataType: dataType,
-                        isNullable: nullable,
-                        isPrimaryKey: isPK,
-                        references: references
+            return try await record(
+                query.sql,
+                database: database,
+                source: .catalog,
+                rowCount: { $0.count }
+            ) {
+                let rows = try await client.query(query, logger: Self.logger)
+                var result: [ColumnInfo] = []
+                for try await row in rows {
+                    let (name, dataType, nullable, isPK, references) =
+                        try row.decode((String, String, Bool, Bool, String?).self)
+                    result.append(
+                        ColumnInfo(
+                            name: name,
+                            dataType: dataType,
+                            isNullable: nullable,
+                            isPrimaryKey: isPK,
+                            references: references
+                        )
                     )
-                )
+                }
+                return result
             }
-            return result
         } catch {
             throw HerdError.queryFailed(Self.describe(error))
         }
@@ -257,29 +315,47 @@ public actor PostgresDriver: DatabaseDriver {
 
     public func catalog(database: String) async throws -> SQLCatalog {
         let client = try await connectClient(database)
+        let schemasQuery: PostgresQuery = """
+            SELECT nspname
+            FROM pg_namespace
+            WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'
+            ORDER BY nspname;
+            """
+        let tablesQuery: PostgresQuery = """
+            SELECT table_schema, table_name, table_type
+            FROM information_schema.tables
+            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+              AND table_type IN ('BASE TABLE', 'VIEW')
+            ORDER BY table_schema, table_name;
+            """
         do {
-            let schemaSequence = try await client.query("""
-                SELECT nspname
-                FROM pg_namespace
-                WHERE nspname !~ '^pg_' AND nspname <> 'information_schema'
-                ORDER BY nspname;
-                """)
-            var schemas: [String] = []
-            for try await row in schemaSequence {
-                schemas.append(try row.decode(String.self))
+            let schemas = try await record(
+                schemasQuery.sql,
+                database: database,
+                source: .catalog,
+                rowCount: { $0.count }
+            ) {
+                let sequence = try await client.query(schemasQuery, logger: Self.logger)
+                var schemas: [String] = []
+                for try await row in sequence {
+                    schemas.append(try row.decode(String.self))
+                }
+                return schemas
             }
 
-            let tableSequence = try await client.query("""
-                SELECT table_schema, table_name, table_type
-                FROM information_schema.tables
-                WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-                  AND table_type IN ('BASE TABLE', 'VIEW')
-                ORDER BY table_schema, table_name;
-                """)
-            var tables: [TableInfo] = []
-            for try await row in tableSequence {
-                let (schema, name, type) = try row.decode((String, String, String).self)
-                tables.append(TableInfo(schema: schema, name: name, kind: type == "VIEW" ? .view : .table))
+            let tables = try await record(
+                tablesQuery.sql,
+                database: database,
+                source: .catalog,
+                rowCount: { $0.count }
+            ) {
+                let sequence = try await client.query(tablesQuery, logger: Self.logger)
+                var tables: [TableInfo] = []
+                for try await row in sequence {
+                    let (schema, name, type) = try row.decode((String, String, String).self)
+                    tables.append(TableInfo(schema: schema, name: name, kind: type == "VIEW" ? .view : .table))
+                }
+                return tables
             }
 
             let columns = try await listCatalogColumns(database: database)
@@ -291,28 +367,40 @@ public actor PostgresDriver: DatabaseDriver {
 
     public func listCatalogColumns(database: String) async throws -> [CatalogColumn] {
         let client = try await connectClient(database)
+        let query: PostgresQuery = """
+            SELECT table_schema, table_name, column_name, data_type
+            FROM information_schema.columns
+            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+            ORDER BY table_schema, table_name, ordinal_position;
+            """
         do {
-            let sequence = try await client.query("""
-                SELECT table_schema, table_name, column_name, data_type
-                FROM information_schema.columns
-                WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-                ORDER BY table_schema, table_name, ordinal_position;
-                """)
-            var columns: [CatalogColumn] = []
-            for try await row in sequence {
-                let (schema, table, name, dataType) =
-                    try row.decode((String, String, String, String).self)
-                columns.append(
-                    CatalogColumn(schema: schema, table: table, name: name, dataType: dataType)
-                )
+            return try await record(
+                query.sql,
+                database: database,
+                source: .catalog,
+                rowCount: { $0.count }
+            ) {
+                let sequence = try await client.query(query, logger: Self.logger)
+                var columns: [CatalogColumn] = []
+                for try await row in sequence {
+                    let (schema, table, name, dataType) =
+                        try row.decode((String, String, String, String).self)
+                    columns.append(
+                        CatalogColumn(schema: schema, table: table, name: name, dataType: dataType)
+                    )
+                }
+                return columns
             }
-            return columns
         } catch {
             throw HerdError.queryFailed(Self.describe(error))
         }
     }
 
     public func run(_ sql: String, database: String) async throws -> QueryResult {
+        try await run(sql, database: database, source: .user)
+    }
+
+    public func run(_ sql: String, database: String, source: QueryLogSource) async throws -> QueryResult {
         let statements = SQLStatementSplitter.split(sql)
         guard !statements.isEmpty else {
             return QueryResult(message: "Nenhum comando para executar.", statementCount: 0)
@@ -320,6 +408,10 @@ public actor PostgresDriver: DatabaseDriver {
 
         let client = try await connectClient(database)
         let start = Date()
+        let connectionID = config.id
+        let connectionName = config.name
+        let logDatabase = normalizedDatabase(database)
+        let recorder = self.recorder
 
         let table: QueryResult?
         do {
@@ -335,31 +427,39 @@ public actor PostgresDriver: DatabaseDriver {
                     for (index, statement) in statements.enumerated() {
                         try Task.checkCancellation()
 
-                        let sequence: PostgresRowSequence
-                        do {
-                            sequence = try await connection.query(
-                                PostgresQuery(unsafeSQL: statement),
-                                logger: Self.logger
-                            )
-                        } catch {
-                            throw Self.queryError(error, index: index, total: statements.count)
-                        }
-
-                        let columns = sequence.columns.map(\.name)
-                        var rows: [[String?]] = []
-
-                        do {
-                            for try await row in sequence {
-                                rows.append(row.map { PostgresCellFormatter.string(from: $0) })
-                                if rows.count >= Self.maximumRows { break }
+                        let query = PostgresQuery(unsafeSQL: statement)
+                        let outcome: (columns: [String], rows: [[String?]])? = try await self.record(
+                            statement,
+                            database: database,
+                            source: source,
+                            rowCount: { $0?.rows.count ?? 0 }
+                        ) {
+                            let sequence: PostgresRowSequence
+                            do {
+                                sequence = try await connection.query(query, logger: Self.logger)
+                            } catch {
+                                throw Self.queryError(error, index: index, total: statements.count)
                             }
-                        } catch {
-                            throw Self.queryError(error, index: index, total: statements.count)
+
+                            let columns = sequence.columns.map(\.name)
+                            var rows: [[String?]] = []
+
+                            do {
+                                for try await row in sequence {
+                                    rows.append(row.map { PostgresCellFormatter.string(from: $0) })
+                                    if rows.count >= Self.maximumRows { break }
+                                }
+                            } catch {
+                                throw Self.queryError(error, index: index, total: statements.count)
+                            }
+
+                            return columns.isEmpty ? nil : (columns: columns, rows: rows)
                         }
 
-                        if !columns.isEmpty {
-                            lastTable = QueryResult(columns: columns, rows: rows)
-                            allSets.append(ResultSet(columns: columns, rows: rows))
+                        if let outcome {
+                            let result = QueryResult(columns: outcome.columns, rows: outcome.rows)
+                            lastTable = result
+                            allSets.append(ResultSet(columns: outcome.columns, rows: outcome.rows))
                         }
                     }
 
@@ -369,9 +469,30 @@ public actor PostgresDriver: DatabaseDriver {
                     guard let backendID else { return }
                     // The pool is sized so one spare connection exists for this request.
                     Task.detached {
-                        _ = try? await client.query(
-                            "SELECT pg_cancel_backend(CAST(\(Int(backendID)) AS int))"
-                        ).collect()
+                        let sql = "SELECT pg_cancel_backend(CAST(\(Int(backendID)) AS int))"
+                        let started = Date()
+                        do {
+                            _ = try await client.query(PostgresQuery(unsafeSQL: sql)).collect()
+                            recorder?.record(QueryLogEntry(
+                                connectionID: connectionID,
+                                connectionName: connectionName,
+                                database: logDatabase,
+                                sql: sql,
+                                source: .cancel,
+                                duration: Date().timeIntervalSince(started),
+                                rowCount: 1
+                            ))
+                        } catch {
+                            recorder?.record(QueryLogEntry(
+                                connectionID: connectionID,
+                                connectionName: connectionName,
+                                database: logDatabase,
+                                sql: sql,
+                                source: .cancel,
+                                duration: Date().timeIntervalSince(started),
+                                errorMessage: Self.describe(error)
+                            ))
+                        }
                     }
                 }
             }
@@ -415,7 +536,7 @@ public actor PostgresDriver: DatabaseDriver {
         let terms = columns.map { "strpos(lower(\(dialect.quote($0.name))::text), lower(\(search))) > 0" }
         let predicate = filter.isEmpty || terms.isEmpty ? "" : " WHERE " + terms.joined(separator: " OR ")
         let countSQL = "SELECT count(*) FROM \(target)\(predicate);"
-        let counted = try await run(countSQL, database: database)
+        let counted = try await run(countSQL, database: database, source: .browse)
         let totalText: String? = counted.rows.first?.first ?? nil
         let total = Int(totalText ?? "0") ?? 0
 
@@ -430,7 +551,7 @@ public actor PostgresDriver: DatabaseDriver {
             "\(dialect.quote($0)) \(descending ? "DESC" : "ASC") NULLS LAST"
         }.joined(separator: ", ")
         let dataSQL = "SELECT * FROM \(target)\(predicate)\(order) LIMIT \(safeSize) OFFSET \(offset.partialValue);"
-        let result = try await run(dataSQL, database: database)
+        let result = try await run(dataSQL, database: database, source: .browse)
         return TablePage(result: result, totalRows: total, page: safePage, columns: columns)
     }
 
@@ -461,6 +582,51 @@ public actor PostgresDriver: DatabaseDriver {
         let message = describe(error)
         guard total > 1 else { return HerdError.queryFailed(message) }
         return HerdError.queryFailed("Comando \(index + 1) de \(total): \(message)")
+    }
+
+    /// Registra a consulta no console, mantendo duração e resultado mesmo em falha.
+    private nonisolated func record<Value>(
+        _ sql: String,
+        database: String?,
+        source: QueryLogSource,
+        rowCount: (Value) -> Int = { _ in 0 },
+        _ body: () async throws -> Value
+    ) async throws -> Value {
+        guard let recorder else { return try await body() }
+
+        let started = Date()
+        let logDatabase = normalizedDatabase(database)
+        do {
+            let value = try await body()
+            recorder.record(QueryLogEntry(
+                connectionID: config.id,
+                connectionName: config.name,
+                database: logDatabase,
+                sql: sql,
+                source: source,
+                duration: Date().timeIntervalSince(started),
+                rowCount: rowCount(value)
+            ))
+            return value
+        } catch {
+            recorder.record(QueryLogEntry(
+                connectionID: config.id,
+                connectionName: config.name,
+                database: logDatabase,
+                sql: sql,
+                source: source,
+                duration: Date().timeIntervalSince(started),
+                errorMessage: Self.logDescription(error)
+            ))
+            throw error
+        }
+    }
+
+    private nonisolated static func logDescription(_ error: Error) -> String {
+        if error is CancellationError || Task.isCancelled {
+            return "Cancelada pelo usuário."
+        }
+        return describe(error)
     }
 
     private static func backendID(on connection: PostgresConnection) async throws -> Int32? {

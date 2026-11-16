@@ -78,6 +78,10 @@ struct TopBarView: View {
                                  help: "Ver processos de backup, restore e CSV (⌥⌘P)") {
                     workspace.openProcesses()
                 }
+                WindowIconButton(symbol: .clock, selected: workspace.consoleVisible,
+                                 help: "Alternar console de log (⌃⌘C)") {
+                    workspace.toggleConsole()
+                }
             }
         }
         .padding(.leading, leadingInset)

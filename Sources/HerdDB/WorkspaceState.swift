@@ -41,6 +41,7 @@ final class WorkspaceState {
     var sidebarVisible = true
     var inspectorVisible = false
     var resultsVisible = true
+    var consoleVisible = false
     var connectionEditor: ConnectionEditorState?
     var tableWizard: TableWizardState?
     var schemaWizard: SchemaWizardState?
@@ -108,6 +109,10 @@ final class WorkspaceState {
     func openProcesses() {
         processes.visible = true
         activeTabID = processesTabID
+    }
+
+    func toggleConsole() {
+        consoleVisible.toggle()
     }
 
     func closeProcesses() {

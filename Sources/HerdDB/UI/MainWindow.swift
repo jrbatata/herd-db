@@ -19,6 +19,8 @@ struct MainWindow: View {
     @AppStorage("sidebarWidth") private var sidebarWidth: Double = 270
     @State private var dragStartWidth: Double?
     @State private var isFullScreen = false
+    @State private var consoleHeight: CGFloat = 220
+    @State private var consoleDragOrigin: CGFloat?
 
     /// Espaço reservado à esquerda para os semáforos + botão da sidebar.
     private let controlsInset: CGFloat = 128
@@ -51,6 +53,16 @@ struct MainWindow: View {
                         .padding(.trailing, 8)
                         .padding(.bottom, 8)
                         .padding(.leading, workspace.sidebarVisible ? 0 : 8)
+
+                    if workspace.consoleVisible {
+                        consoleSplitHandle
+                        QueryConsoleView(workspace: workspace)
+                            .frame(height: consoleHeight)
+                            .padding(.trailing, 8)
+                            .padding(.bottom, 8)
+                            .padding(.leading, workspace.sidebarVisible ? 0 : 8)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                 }
             }
             .ignoresSafeArea()
@@ -141,6 +153,21 @@ struct MainWindow: View {
         .padding(.leading, 82)
         .padding(.top, 4)
         .ignoresSafeArea()
+    }
+
+    private var consoleSplitHandle: some View {
+        SplitHandle()
+            .padding(.trailing, 8)
+            .padding(.leading, workspace.sidebarVisible ? 0 : 8)
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        if consoleDragOrigin == nil { consoleDragOrigin = consoleHeight }
+                        let proposed = (consoleDragOrigin ?? consoleHeight) - value.translation.height
+                        consoleHeight = min(max(proposed, 120), 520)
+                    }
+                    .onEnded { _ in consoleDragOrigin = nil }
+            )
     }
 
     private var resizeHandle: some View {

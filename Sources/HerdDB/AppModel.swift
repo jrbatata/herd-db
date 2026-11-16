@@ -10,11 +10,14 @@ final class AppModel {
     let drivers: DriverRegistry
     let history: QueryHistoryStore
     let catalog: SQLCatalogStore
+    let queryLog: QueryLogStore
 
     init() {
         let connections = ConnectionStore()
+        let queryLog = QueryLogStore()
         self.connections = connections
-        self.drivers = DriverRegistry(store: connections)
+        self.queryLog = queryLog
+        self.drivers = DriverRegistry(store: connections, recorder: queryLog.recorder)
         self.history = QueryHistoryStore()
         self.catalog = SQLCatalogStore()
     }

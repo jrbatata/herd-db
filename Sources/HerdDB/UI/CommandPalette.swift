@@ -63,6 +63,7 @@ enum PaletteAction {
     case openSettings
     case refreshTree
     case toggleSidebar
+    case toggleConsole
     case openDatabases
     case openConnections
     case newConnection
@@ -243,6 +244,9 @@ final class CommandPaletteModel {
         case .toggleSidebar:
             withAnimation(.snappy(duration: 0.25)) { workspace.sidebarVisible.toggle() }
 
+        case .toggleConsole:
+            workspace.toggleConsole()
+
         case .openDatabases:
             present(scope: .databases, workspace: workspace)
 
@@ -286,7 +290,9 @@ final class CommandPaletteModel {
             action("refresh", "Atualizar árvore", "Recarregar a barra lateral", .refresh, "⌘R", .action,
                    .refreshTree),
             action("sidebar", "Alternar barra lateral", "Mostrar ou ocultar a sidebar", .sidebar, "⌘B", .action,
-                   .toggleSidebar)
+                   .toggleSidebar),
+            action("console", "Alternar console", "Ver as consultas enviadas ao servidor", .clock, "⌃⌘C", .action,
+                   .toggleConsole)
         ]
     }
 

@@ -23,6 +23,8 @@ public protocol DatabaseDriver: Sendable {
     func listCatalogColumns(database: String) async throws -> [CatalogColumn]
 
     func run(_ sql: String, database: String) async throws -> QueryResult
+    /// Executa com uma origem explícita, usada pelo console de log.
+    func run(_ sql: String, database: String, source: QueryLogSource) async throws -> QueryResult
     func browseTable(database: String, schema: String?, table: String,
                      page: Int, pageSize: Int, filter: String,
                      sortColumn: String?, descending: Bool) async throws -> TablePage
@@ -31,6 +33,10 @@ public protocol DatabaseDriver: Sendable {
 }
 
 public extension DatabaseDriver {
+    func run(_ sql: String, database: String, source: QueryLogSource) async throws -> QueryResult {
+        try await run(sql, database: database)
+    }
+
     func browseTable(database: String, schema: String?, table: String,
                      page: Int, pageSize: Int, filter: String,
                      sortColumn: String?, descending: Bool) async throws -> TablePage {
