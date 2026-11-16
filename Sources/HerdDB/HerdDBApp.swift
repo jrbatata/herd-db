@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
         Self.updateIcon()
+        UpdateController.shared.checkAtLaunch()
         appearanceObservation = NSApp.observe(\.effectiveAppearance) { _, _ in
             Task { @MainActor in Self.updateIcon() }
         }
@@ -54,6 +55,13 @@ struct HerdCommands: Commands {
     @FocusedValue(\.workspace) private var workspace
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Verificar Atualizações…") {
+                UpdateController.shared.checkManually()
+            }
+            Divider()
+        }
+
         CommandGroup(replacing: .newItem) {
             Menu("Novo") {
                 Button("Script") { workspace?.newQueryTab() }
