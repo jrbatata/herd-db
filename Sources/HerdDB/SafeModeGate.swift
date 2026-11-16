@@ -4,7 +4,7 @@ import HerdCore
 import LocalAuthentication
 import SwiftUI
 
-/// Centraliza a confirmação do Safe Mode.
+/// Centraliza a confirmação da proteção da conexão.
 ///
 /// Deve ser chamado no MainActor, imediatamente antes de enviar comandos que
 /// podem alterar dados. Retorna `false` quando o usuário cancela.
@@ -38,7 +38,7 @@ enum SafeModeGate {
                   connections: connections, action: action)
     }
 
-    /// Pede a senha da conexão, usado ao trocar de nível no modo Seguro.
+    /// Pede a senha da conexão, usado ao trocar de nível nos modos com senha.
     static func confirmPassword(
         config: ConnectionConfig,
         connections: ConnectionStore,

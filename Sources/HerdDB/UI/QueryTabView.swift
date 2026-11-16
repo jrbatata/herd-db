@@ -174,7 +174,7 @@ struct QueryTabView: View {
                 Circle()
                     .fill(tint)
                     .frame(width: 6, height: 6)
-                Text(mode.displayName)
+                Text(mode.compactName)
                     .font(.system(size: 10.5, weight: .medium))
             }
             .foregroundStyle(tint)
@@ -185,7 +185,7 @@ struct QueryTabView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Safe Mode: \(mode.summary)")
+        .help("Proteção: \(mode.summary)")
     }
 
     private func changeSafeMode(to mode: SafeMode) {
@@ -193,7 +193,7 @@ struct QueryTabView: View {
               config.safeMode != mode else { return }
         if config.safeMode.requiresPassword,
            !SafeModeGate.confirmPassword(config: config, connections: app.connections,
-                                         action: "alterar o Safe Mode") {
+                                         action: "alterar a proteção") {
             return
         }
         var updated = config
@@ -202,7 +202,7 @@ struct QueryTabView: View {
             try app.update(updated)
         } catch {
             workspace.alert = AlertMessage(
-                title: "Não foi possível alterar o Safe Mode",
+                title: "Não foi possível alterar a proteção",
                 message: error.localizedDescription
             )
         }

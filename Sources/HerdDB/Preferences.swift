@@ -32,10 +32,12 @@ struct PreferencesView: View {
     var body: some View {
         Form {
             Section {
-                Picker("Safe Mode padrão", selection: $defaultSafeModeRaw) {
-                    ForEach(SafeMode.allCases) { mode in
-                        Text(mode.displayName).tag(mode.rawValue)
-                    }
+                Picker("Proteção padrão", selection: $defaultSafeModeRaw) {
+                    Text(SafeMode.silent.displayName).tag(SafeMode.silent.rawValue)
+                    Text(SafeMode.alert.displayName).tag(SafeMode.alert.rawValue)
+                    Text(SafeMode.alertReadOnly.displayName).tag(SafeMode.alertReadOnly.rawValue)
+                    Text(SafeMode.secure.displayName).tag(SafeMode.secure.rawValue)
+                    Text(SafeMode.secureReadOnly.displayName).tag(SafeMode.secureReadOnly.rawValue)
                 }
                 Text(defaultSafeMode.summary)
                     .font(.caption)
@@ -45,12 +47,12 @@ struct PreferencesView: View {
             }
 
             Section {
-                Toggle("Usar Touch ID no modo Seguro", isOn: $touchIDEnabled)
-                Text("Substitui a senha da conexão pela biometria do Mac ao executar comandos no modo Seguro e ao trocar o nível. Sem Touch ID disponível, a senha continua sendo pedida.")
+                Toggle("Usar Touch ID nos modos com senha", isOn: $touchIDEnabled)
+                Text("Substitui a senha da conexão pela biometria do Mac ao executar comandos protegidos por senha e ao trocar de nível. Sem Touch ID disponível, a senha continua sendo pedida.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } header: {
-                Text("Safe Mode")
+                Text("Proteção")
             }
         }
         .formStyle(.grouped)

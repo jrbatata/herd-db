@@ -156,7 +156,7 @@ struct TopBarView: View {
                 Circle()
                     .fill(connection.safeMode.tint)
                     .frame(width: 6, height: 6)
-                    .help("Safe Mode: \(connection.safeMode.displayName)")
+                    .help("Proteção: \(connection.safeMode.displayName)")
             }
 
             Button {

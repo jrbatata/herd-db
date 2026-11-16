@@ -14,26 +14,37 @@ public enum SafeMode: String, Codable, CaseIterable, Identifiable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .silent: "Silencioso"
-        case .alert: "Alerta"
-        case .alertReadOnly: "Alerta 2"
-        case .secure: "Seguro"
-        case .secureReadOnly: "Seguro 2"
+        case .silent: "Sem proteção"
+        case .alert: "Confirmar todo comando"
+        case .alertReadOnly: "Confirmar somente comandos de escrita"
+        case .secure: "Pedir senha em todo comando"
+        case .secureReadOnly: "Pedir senha somente em comandos de escrita"
+        }
+    }
+
+    /// Rótulo curto para a cápsula da aba e o título da janela.
+    public var compactName: String {
+        switch self {
+        case .silent: "Sem proteção"
+        case .alert: "Confirma tudo"
+        case .alertReadOnly: "Confirma escrita"
+        case .secure: "Senha sempre"
+        case .secureReadOnly: "Senha em escrita"
         }
     }
 
     public var summary: String {
         switch self {
         case .silent:
-            "Executa sem confirmação."
+            "Executa os comandos direto, sem confirmar nada."
         case .alert:
-            "Confirma antes de executar qualquer comando."
+            "Pede confirmação antes de executar qualquer comando."
         case .alertReadOnly:
-            "Confirma antes de executar, exceto SELECT, EXPLAIN e SHOW."
+            "Pede confirmação somente para comandos que alteram dados; SELECT, EXPLAIN e SHOW passam direto."
         case .secure:
             "Pede a senha da conexão antes de executar qualquer comando."
         case .secureReadOnly:
-            "Pede a senha, exceto para SELECT, EXPLAIN e SHOW."
+            "Pede a senha somente para comandos que alteram dados; SELECT, EXPLAIN e SHOW passam direto."
         }
     }
 
@@ -135,7 +146,7 @@ public struct ConnectionConfig: Identifiable, Codable, Hashable, Sendable {
         username = try container.decode(String.self, forKey: .username)
         database = try container.decode(String.self, forKey: .database)
         useTLS = try container.decodeIfPresent(Bool.self, forKey: .useTLS) ?? false
-        // Configurações antigas não têm os campos; os padrões são Silencioso e não-produção.
+        // Configurações antigas não têm os campos; os padrões são sem proteção e não-produção.
         safeMode = try container.decodeIfPresent(SafeMode.self, forKey: .safeMode) ?? .silent
         isProduction = try container.decodeIfPresent(Bool.self, forKey: .isProduction) ?? false
     }

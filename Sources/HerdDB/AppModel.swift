@@ -28,7 +28,7 @@ final class AppModel {
         catalog.invalidate(connectionID: config.id)
     }
 
-    /// Atualiza metadados (como o Safe Mode) sem derrubar a conexão aberta.
+    /// Atualiza metadados (como a proteção) sem derrubar a conexão aberta.
     func update(_ config: ConnectionConfig) throws {
         try connections.update(config)
     }

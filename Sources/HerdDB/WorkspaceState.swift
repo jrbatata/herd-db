@@ -102,7 +102,7 @@ final class WorkspaceState {
         guard let config = app.connections.connection(id: tab.connectionID) else { return tab.title }
         var parts = [tab.title]
         if config.isProduction { parts.append("Produção") }
-        if config.safeMode.isRestricted { parts.append(config.safeMode.displayName) }
+        if config.safeMode.isRestricted { parts.append(config.safeMode.compactName) }
         return parts.joined(separator: " · ")
     }
 

@@ -107,11 +107,18 @@ struct ConnectionSheet: View {
                             .controlSize(.mini)
                     }
                     Divider()
-                    field("Safe Mode") {
-                        Picker("Safe Mode", selection: $config.safeMode) {
-                            ForEach(SafeMode.allCases) { mode in
-                                Text(mode.displayName).tag(mode)
-                            }
+                    field("Proteção") {
+                        Picker("Proteção", selection: $config.safeMode) {
+                            Text(SafeMode.silent.displayName)
+                                .tag(SafeMode.silent)
+                            Text(SafeMode.alert.displayName)
+                                .tag(SafeMode.alert)
+                            Text(SafeMode.alertReadOnly.displayName)
+                                .tag(SafeMode.alertReadOnly)
+                            Text(SafeMode.secure.displayName)
+                                .tag(SafeMode.secure)
+                            Text(SafeMode.secureReadOnly.displayName)
+                                .tag(SafeMode.secureReadOnly)
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
