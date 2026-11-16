@@ -128,17 +128,30 @@ struct SQLEditorView: NSViewRepresentable {
         weak var ruler: SQLLineNumberRuler?
         var completionController: SQLCompletionController?
         var isEditing = false
+        private var pendingEditLocation: Int?
+        private var highlightTask: Task<Void, Never>?
+        private var highlightGeneration = 0
 
         init(_ parent: SQLEditorView) {
             self.parent = parent
+        }
+
+        func textView(
+            _ textView: NSTextView,
+            shouldChangeTextIn affectedCharRange: NSRange,
+            replacementString: String?
+        ) -> Bool {
+            pendingEditLocation = min(pendingEditLocation ?? affectedCharRange.location, affectedCharRange.location)
+            ruler?.applyEdit(in: affectedCharRange, replacement: replacementString ?? "")
+            return true
         }
 
         func textDidChange(_ notification: Notification) {
             guard let textView else { return }
             isEditing = true
             parent.text = textView.string
-            highlightNow()
-            ruler?.syncToText()
+            scheduleHighlight(from: pendingEditLocation ?? 0)
+            pendingEditLocation = nil
             isEditing = false
             completionController?.textDidChange()
         }
@@ -155,7 +168,34 @@ struct SQLEditorView: NSViewRepresentable {
 
         func highlightNow() {
             guard let textView else { return }
-            SQLHighlight.apply(to: textView)
+            highlightGeneration += 1
+            highlightTask?.cancel()
+            SQLHighlight.apply(SQLTokenizer.tokens(in: textView.string), to: textView)
+        }
+
+        private func scheduleHighlight(from editLocation: Int) {
+            guard let textView else { return }
+            let snapshot = textView.string
+            let ns = snapshot as NSString
+            let location = min(max(editLocation, 0), ns.length)
+            let start = ns.lineRange(for: NSRange(location: location, length: 0)).location
+            let range = NSRange(location: start, length: ns.length - start)
+
+            highlightGeneration += 1
+            let generation = highlightGeneration
+            highlightTask?.cancel()
+            highlightTask = Task { [weak self, weak textView] in
+                let tokens = await Task.detached(priority: .userInitiated) {
+                    guard !Task.isCancelled else { return [SQLToken]() }
+                    return SQLTokenizer.tokens(in: snapshot)
+                }.value
+                guard !Task.isCancelled,
+                      let self,
+                      let textView,
+                      self.highlightGeneration == generation,
+                      textView.string == snapshot else { return }
+                SQLHighlight.apply(tokens, to: textView, in: range)
+            }
         }
     }
 }
@@ -486,15 +526,22 @@ enum SQLHighlight {
         .parameter: dynamic(light: rgb(166, 79, 13), dark: rgb(242, 166, 102)),
     ]
 
-    static func apply(to textView: NSTextView) {
+    static func apply(
+        _ tokens: [SQLToken],
+        to textView: NSTextView,
+        in requestedRange: NSRange? = nil
+    ) {
         guard let storage = textView.textStorage else { return }
         let fullRange = NSRange(location: 0, length: storage.length)
+        let range = requestedRange.map { NSIntersectionRange($0, fullRange) } ?? fullRange
 
         storage.beginEditing()
-        storage.setAttributes(baseAttributes, range: fullRange)
-        for token in SQLTokenizer.tokens(in: textView.string) {
+        storage.setAttributes(baseAttributes, range: range)
+        for token in tokens {
             guard let color = colors[token.kind] else { continue }
-            storage.addAttribute(.foregroundColor, value: color, range: token.range)
+            let tokenRange = NSIntersectionRange(token.range, range)
+            guard tokenRange.length > 0 else { continue }
+            storage.addAttribute(.foregroundColor, value: color, range: tokenRange)
         }
         storage.endEditing()
 
@@ -535,11 +582,33 @@ final class SQLLineNumberRuler: NSRulerView {
 
     override var isFlipped: Bool { true }
 
-    /// Recomputes the line index and the gutter width. Called on every text change.
+    /// Recomputes the complete line index for initial/external text replacement.
     func syncToText() {
         guard let string = textView?.string else { return }
         lineStarts = Self.computeLineStarts(in: string as NSString)
+        updateThicknessAndDisplay()
+    }
 
+    /// Updates line offsets from the pending text edit without rescanning the
+    /// complete document. Called before NSTextView applies the replacement.
+    func applyEdit(in range: NSRange, replacement: String) {
+        let oldEnd = NSMaxRange(range)
+        let replacementLength = (replacement as NSString).length
+        let delta = replacementLength - range.length
+
+        var updated = lineStarts.filter { $0 <= range.location || $0 > oldEnd }
+        for index in updated.indices where updated[index] > oldEnd {
+            updated[index] += delta
+        }
+
+        let replacementStarts = Self.computeLineStarts(in: replacement as NSString).dropFirst()
+        updated.append(contentsOf: replacementStarts.map { range.location + $0 })
+        lineStarts = Array(Set(updated)).sorted()
+        if lineStarts.first != 0 { lineStarts.insert(0, at: 0) }
+        updateThicknessAndDisplay()
+    }
+
+    private func updateThicknessAndDisplay() {
         let digits = String(lineStarts.count).count
         let thickness = max(minimumThickness, CGFloat(12 + digits * 7))
         if abs(thickness - ruleThickness) > 0.5 {
