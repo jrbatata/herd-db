@@ -87,7 +87,9 @@ struct WindowConfigurator: NSViewRepresentable {
 
         @objc private func closeRequested(_ sender: Any?) {
             guard onCloseRequest?() != false else { return }
-            (sender as? NSView)?.window?.performClose(sender)
+            // `performClose` clicks the standard close button. Since that button's
+            // action points back here, using it would recurse until a stack overflow.
+            (sender as? NSView)?.window?.close()
         }
 
         private func reposition(_ window: NSWindow, offset: CGFloat) {
