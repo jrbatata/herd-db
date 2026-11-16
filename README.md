@@ -7,7 +7,7 @@
 <p align="center">Explore schemas, escreva SQL com autocomplete e edite dados inline em um cliente PostgreSQL 100% nativo.</p>
 <p align="center">Nativo para macOS (SwiftUI + AppKit) &nbsp;·&nbsp; Interface em português &nbsp;·&nbsp; Senhas no Chaveiro</p>
 
-![Visão geral do Herd com árvore de objetos na barra lateral, editor SQL e grid de resultados](docs/screenshots/visao-geral.png)
+![Visão geral sanitizada do Herd com editor SQL e grid de resultados usando dados de demonstração](docs/screenshots/visao-geral.png)
 
 ## Tudo à mão. Sem sair do fluxo.
 
@@ -41,7 +41,7 @@ Cadastre servidores locais ou remotos em segundos, teste a conexão antes de sal
 
 ## Roadmap
 
-**Estado:** fases 1, 2, 3, 4, 5 e 7 concluídas; fase 6 em standby; fase 8 em polimento final; fase 9 planejada; fase 10 (diagrama ER) futura.
+**Estado:** fases 1, 2, 3, 4, 5 e 7 concluídas; fase 6 em standby; fase 8 em polimento final; fase 9 em desenvolvimento, com Safe Mode concluído e Abrir Qualquer Coisa ainda em construção; fase 10 (diagrama ER) futura.
 
 | Fase | Escopo                                             | Status             |
 | ---- | -------------------------------------------------- | ------------------ |
@@ -53,8 +53,68 @@ Cadastre servidores locais ou remotos em segundos, teste a conexão antes de sal
 | 6    | FreeTDS + SQL Server                               | ⏸️ Standby         |
 | 7    | Backup/restore, novo banco e geração de scripts    | ✅ Concluída       |
 | 8    | Polimento, acessibilidade e empacotamento          | 🚧 Polimento final |
-| 9    | Safe Mode, ⌘P, console de log, processos, filtros e I/O | 📋 Planejada |
+| 9    | Safe Mode, ⌘P, console de log, processos, filtros e I/O | 🚧 Em desenvolvimento |
 | 10   | Diagrama ER                                        | 🔮 Futura          |
+
+## As 10 fases, em imagens
+
+As capturas abaixo usam exclusivamente uma base fictícia (`herd_demo`), nomes genéricos e dados de exemplo. Nenhum banco, host, usuário ou dado de produção aparece na documentação.
+
+### 1. Conecte com segurança e explore sem atrito
+
+A fundação do Herd já está pronta: cliente PostgreSQL nativo, conexões protegidas pelo Chaveiro do macOS e navegação sob demanda por bancos, schemas, tabelas, views e colunas.
+
+![Formulário de conexão PostgreSQL com host local e usuário fictício](docs/screenshots/conexoes.png)
+
+### 2. Consulte com a velocidade de uma ferramenta nativa
+
+O editor combina realce de sintaxe, execução de script, seleção ou comando atual, múltiplos resultados, cancelamento no servidor e histórico por conexão e banco.
+
+![Editor SQL executando uma consulta sobre dados fictícios](docs/screenshots/editor-consulta.png)
+
+### 3. Escreva menos SQL repetitivo
+
+Autocomplete contextual, aliases, schemas, snippets e scripts prontos de `SELECT`, `INSERT`, `UPDATE`, `DELETE` e DDL aceleram tarefas recorrentes sem tirar as mãos do teclado. A captura mostra o editor que recebe essas sugestões e abre os scripts gerados.
+
+![Editor SQL com realce de sintaxe e consulta gerada para a tabela de demonstração](docs/screenshots/visao-geral.png)
+
+### 4. Edite dados com controle
+
+O grid oferece paginação, ordenação e filtro no servidor, seleção em lote, cópia em TSV, exportação CSV e edição inline. Antes do commit, o Herd apresenta o SQL gerado e aplica tudo em uma única transação.
+
+![Grid de resultados com dados fictícios e ações rápidas de edição e exportação](docs/screenshots/editor-consulta.png)
+
+### 5. Entenda e evolua a estrutura
+
+Structure/DDL reúne colunas, índices e constraints, gera o `CREATE TABLE` completo e prepara alterações com preview. Wizards nativos cobrem tabela, schema, coluna, índice, regra, trigger e política RLS, sempre com revisão antes da execução.
+
+![Consulta e grid da base de demonstração usados como ponto de entrada para Structure e DDL](docs/screenshots/visao-geral.png)
+
+### 6. SQL Server — em standby
+
+A integração via FreeTDS continua no roadmap. Como ainda não existe uma experiência concluída para demonstrar, esta fase não usa captura de tela nem antecipa uma interface que o produto ainda não entrega.
+
+### 7. Operações de banco sem sair do Herd
+
+Backup e restore PostgreSQL usam `pg_dump`, `pg_restore` e `psql`, com progresso e log ao vivo. A fase também entrega criação de banco pela interface e geração de scripts SQL pelo menu da tabela.
+
+![Interface nativa do Herd com o banco de demonstração pronto para operações e scripts](docs/screenshots/visao-geral.png)
+
+### 8. Uma experiência feita para o Mac
+
+Tema claro/escuro, Liquid Glass, menus de contexto nativos, estados vazios e de erro, atalhos completos e distribuição em `.app`, `.dmg` e `.zip` fazem o Herd se comportar como parte do macOS — não como uma página web empacotada.
+
+![Interface escura nativa do Herd com editor e resultados na mesma janela](docs/screenshots/editor-consulta.png)
+
+### 9. Segurança diária já entregue; produtividade em evolução
+
+O Safe Mode já permite escolher entre execução silenciosa, confirmação antes de comandos sensíveis e proteção por senha ou Touch ID, além de marcar conexões de produção. **Abrir Qualquer Coisa (`⌘P`) ainda está em desenvolvimento**, assim como console, processos ao vivo e a próxima rodada de filtros e importação/exportação.
+
+![Configuração de Safe Mode e identificação de conexão de produção, sem dados reais](docs/screenshots/safe-mode.png)
+
+### 10. Diagrama ER — futura
+
+O diagrama entidade-relacionamento será construído sobre as PKs e FKs que o Herd já descobre. A fase ainda não tem interface pronta; por isso, não há mockup apresentado como produto concluído.
 
 ## Plano detalhado por fases
 
@@ -166,7 +226,7 @@ Cadastre servidores locais ou remotos em segundos, teste a conexão antes de sal
 - [ ] Revisão de acessibilidade
 - [ ] Notarização e distribuição
 
-### Fase 9 — Produtividade e segurança no dia a dia 📋 (Planejada)
+### Fase 9 — Produtividade e segurança no dia a dia 🚧 (Em desenvolvimento)
 
 Itens inspirados na documentação do TablePlus, em ordem de prioridade. Cada item é independente e cabe na arquitetura atual (sidebar, painel inferior, aba Processos, grid e editor).
 
