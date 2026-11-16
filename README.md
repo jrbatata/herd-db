@@ -267,6 +267,7 @@ Comparação com as páginas Editor Basics, Filter e Import & Export do TablePlu
 **Editor SQL**
 
 - [x] Fechamento automático de `'` e `"`, pulando a aspa de fechamento existente e envolvendo a seleção
+- [x] Autocomplete de coluna em `WHERE`, `AND`, `OR`, `ON` e `HAVING` já com `= ''` e o cursor entre as aspas, sem aspas para tipos numéricos e booleanos
 - [ ] Limite de linhas ao lado do botão Executar: Sem limite ou de 100 a 500.000, aplicado a `SELECT` sem `LIMIT` e salvo por conexão
 - [ ] Alternar comentário em bloco (`⌥⌘/`), além do comentário de linha atual
 - [ ] Dobrar/expandir trechos pela calha (instruções e linhas indentadas), lembrando as dobras em arquivos salvos

@@ -201,14 +201,144 @@ final class SQLCompletionEngineTests: XCTestCase {
         let table = tables.first { $0.kind == .table }
         XCTAssertEqual(table?.insertText, "\"Pedidos\"")
 
-        let sql = "SELECT * FROM \"Pedidos\" p WHERE p."
+        let sql = "SELECT p. FROM \"Pedidos\" p"
+        let cursor = (sql as NSString).range(of: "p.").location + 2
         let columns = SQLCompletionEngine.suggestions(
             in: sql,
-            at: (sql as NSString).length,
+            at: cursor,
             catalog: quoted,
             defaultSchema: "public"
         )
         XCTAssertEqual(columns.first?.insertText, "\"Nome Cliente\"")
+    }
+
+    // MARK: - Conditions
+
+    func testColumnInWhereCompletesWithEmptyQuotedValue() {
+        let sql = "SELECT * FROM users WHERE na"
+        let items = SQLCompletionEngine.suggestions(
+            in: sql,
+            at: (sql as NSString).length,
+            catalog: catalog
+        )
+
+        let name = items.first { $0.title == "name" }
+        XCTAssertEqual(name?.insertText, "name = ''")
+        XCTAssertEqual(name?.caretOffset, 8)
+    }
+
+    func testColumnAfterAndCompletesWithCondition() {
+        let sql = "SELECT * FROM users WHERE name = 'ana' AND na"
+        let items = SQLCompletionEngine.suggestions(
+            in: sql,
+            at: (sql as NSString).length,
+            catalog: catalog
+        )
+
+        XCTAssertEqual(items.first { $0.title == "name" }?.insertText, "name = ''")
+    }
+
+    func testMemberColumnInConditionCompletesWithCondition() {
+        let sql = "SELECT * FROM users u WHERE u.na"
+        let items = SQLCompletionEngine.suggestions(
+            in: sql,
+            at: (sql as NSString).length,
+            catalog: catalog
+        )
+
+        let name = items.first { $0.title == "name" }
+        XCTAssertEqual(name?.insertText, "name = ''")
+        XCTAssertEqual(name?.caretOffset, 8)
+    }
+
+    func testNumericColumnInConditionOmitsQuotes() {
+        let sql = "SELECT * FROM orders WHERE to"
+        let items = SQLCompletionEngine.suggestions(
+            in: sql,
+            at: (sql as NSString).length,
+            catalog: catalog
+        )
+
+        let total = items.first { $0.title == "total" }
+        XCTAssertEqual(total?.insertText, "total = ")
+        XCTAssertEqual(total?.caretOffset, 8)
+    }
+
+    func testColumnOutsideConditionHasNoComparison() {
+        let sql = "SELECT na FROM users"
+        let cursor = (sql as NSString).range(of: "na").location + 2
+        let items = SQLCompletionEngine.suggestions(in: sql, at: cursor, catalog: catalog)
+
+        let name = items.first { $0.title == "name" }
+        XCTAssertEqual(name?.insertText, "name")
+        XCTAssertNil(name?.caretOffset)
+    }
+
+    func testComparisonAlreadyTypedIsNotACondition() {
+        let sql = "SELECT * FROM users WHERE name = na"
+        let items = SQLCompletionEngine.suggestions(
+            in: sql,
+            at: (sql as NSString).length,
+            catalog: catalog
+        )
+
+        let name = items.first { $0.title == "name" }
+        XCTAssertEqual(name?.insertText, "name")
+        XCTAssertNil(name?.caretOffset)
+    }
+
+    func testOrderByIsNotACondition() {
+        let sql = "SELECT * FROM users ORDER BY na"
+        let items = SQLCompletionEngine.suggestions(
+            in: sql,
+            at: (sql as NSString).length,
+            catalog: catalog
+        )
+
+        XCTAssertEqual(items.first { $0.title == "name" }?.insertText, "name")
+    }
+
+    func testEmptyConditionAfterWhereUsesQuotedValues() {
+        let sql = "SELECT * FROM users WHERE "
+        let cursor = (sql as NSString).length
+        guard let context = SQLCompletionEngine.context(in: sql, at: cursor, allowEmptyPrefix: true) else {
+            return XCTFail("context missing")
+        }
+
+        let items = SQLCompletionEngine.suggestions(for: context, in: sql, catalog: catalog)
+        XCTAssertEqual(items.first { $0.title == "name" }?.insertText, "name = ''")
+    }
+
+    func testConditionQuotingFollowsColumnType() {
+        let typedCatalog = SQLCatalog(
+            schemas: ["public"],
+            tables: [TableInfo(schema: "public", name: "flags", kind: .table)],
+            columns: [
+                CatalogColumn(schema: "public", table: "flags", name: "active", dataType: "boolean"),
+                CatalogColumn(schema: "public", table: "flags", name: "label", dataType: "character varying(40)"),
+                CatalogColumn(schema: "public", table: "flags", name: "tags", dataType: "text[]"),
+                CatalogColumn(schema: "public", table: "flags", name: "created_at", dataType: "timestamp without time zone"),
+            ]
+        )
+
+        let sql = "SELECT * FROM flags WHERE "
+        guard let context = SQLCompletionEngine.context(
+            in: sql,
+            at: (sql as NSString).length,
+            allowEmptyPrefix: true
+        ) else {
+            return XCTFail("context missing")
+        }
+
+        let items = SQLCompletionEngine.suggestions(for: context, in: sql, catalog: typedCatalog)
+        func insert(_ title: String) -> String? {
+            items.first { $0.title == title }?.insertText
+        }
+
+        XCTAssertEqual(insert("active"), "active = ")
+        XCTAssertEqual(insert("label"), "label = ''")
+        XCTAssertEqual(insert("tags"), "tags = ''")
+        XCTAssertEqual(insert("created_at"), "created_at = ''")
     }
 
     func testSuggestionsAreEmptyInsideCommentsAndStrings() {

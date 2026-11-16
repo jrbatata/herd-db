@@ -190,9 +190,11 @@ public enum SQLCompletionEngine {
         dialect: SQLDialect = .postgres,
         includeSnippets: Bool = true
     ) -> [SQLCompletionItem] {
-        let statement = statementText(containing: context.replacementRange.location, in: sql)
+        let statementInfo = statementLocation(containing: context.replacementRange.location, in: sql)
+        let statement = statementInfo.text
         let references = tableReferences(in: statement)
         let prefix = context.prefix
+        let condition = isConditionPosition(in: statement, at: statementInfo.offset)
 
         var items: [SQLCompletionItem] = []
 
@@ -203,7 +205,8 @@ public enum SQLCompletionEngine {
                 references: references,
                 catalog: catalog,
                 defaultSchema: defaultSchema,
-                dialect: dialect
+                dialect: dialect,
+                condition: condition
             )
 
         case .tableName:
@@ -219,7 +222,8 @@ public enum SQLCompletionEngine {
                 catalog: catalog,
                 defaultSchema: defaultSchema,
                 dialect: dialect,
-                includeSnippets: includeSnippets
+                includeSnippets: includeSnippets,
+                condition: condition
             )
         }
 
@@ -240,7 +244,8 @@ public enum SQLCompletionEngine {
         references: [TableReference],
         catalog: SQLCatalog,
         defaultSchema: String?,
-        dialect: SQLDialect
+        dialect: SQLDialect,
+        condition: Bool
     ) -> [SQLCompletionItem] {
         if let reference = references.first(where: { matches(qualifier, $0.alias) || matches(qualifier, $0.table) }) {
             let schema = reference.schema
@@ -249,7 +254,7 @@ public enum SQLCompletionEngine {
                 ?? "public"
             let columns = catalog.columns(schema: schema, table: reference.table)
             if !columns.isEmpty {
-                return columns.map { columnItem($0, dialect: dialect) }
+                return columns.map { columnItem($0, dialect: dialect, condition: condition) }
             }
         }
 
@@ -260,7 +265,9 @@ public enum SQLCompletionEngine {
 
         if let table = catalog.table(named: qualifier) {
             let columns = catalog.columns(schema: table.schema, table: table.name)
-            if !columns.isEmpty { return columns.map { columnItem($0, dialect: dialect) } }
+            if !columns.isEmpty {
+                return columns.map { columnItem($0, dialect: dialect, condition: condition) }
+            }
         }
 
         return []
@@ -303,7 +310,8 @@ public enum SQLCompletionEngine {
         catalog: SQLCatalog,
         defaultSchema: String?,
         dialect: SQLDialect,
-        includeSnippets: Bool
+        includeSnippets: Bool,
+        condition: Bool
     ) -> [SQLCompletionItem] {
         let current = defaultSchema ?? "public"
         var items: [SQLCompletionItem] = []
@@ -321,7 +329,7 @@ public enum SQLCompletionEngine {
                 ?? catalog.table(named: reference.table)?.schema
                 ?? current
             for column in catalog.columns(schema: schema, table: reference.table) {
-                add(columnItem(column, dialect: dialect))
+                add(columnItem(column, dialect: dialect, condition: condition))
             }
         }
 
@@ -393,13 +401,58 @@ public enum SQLCompletionEngine {
         )
     }
 
-    private static func columnItem(_ column: CatalogColumn, dialect: SQLDialect) -> SQLCompletionItem {
-        SQLCompletionItem(
+    private static func columnItem(
+        _ column: CatalogColumn,
+        dialect: SQLDialect,
+        condition: Bool
+    ) -> SQLCompletionItem {
+        let name = identifier(column.name, dialect: dialect)
+        guard condition else {
+            return SQLCompletionItem(
+                kind: .column,
+                title: column.name,
+                insertText: name,
+                detail: column.dataType
+            )
+        }
+
+        let insertText: String
+        let caretOffset: Int?
+        if needsQuotedLiteral(column.dataType) {
+            insertText = "\(name) = ''"
+            caretOffset = (insertText as NSString).length - 1
+        } else {
+            insertText = "\(name) = "
+            caretOffset = (insertText as NSString).length
+        }
+
+        return SQLCompletionItem(
             kind: .column,
             title: column.name,
-            insertText: identifier(column.name, dialect: dialect),
-            detail: column.dataType
+            insertText: insertText,
+            detail: column.dataType,
+            caretOffset: caretOffset
         )
+    }
+
+    /// Types whose literals are written without quotes. Arrays and everything
+    /// else keep `''` so the user only types the value.
+    private static func needsQuotedLiteral(_ dataType: String) -> Bool {
+        let base = dataType
+            .lowercased()
+            .split(separator: "(", maxSplits: 1)
+            .first
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            ?? ""
+
+        let unquoted: Set<String> = [
+            "smallint", "integer", "int", "int2", "int4", "int8", "bigint",
+            "smallserial", "serial", "bigserial", "serial2", "serial4", "serial8",
+            "numeric", "decimal", "real", "double precision", "float", "float4", "float8",
+            "money", "oid", "boolean", "bool",
+        ]
+
+        return !unquoted.contains(base)
     }
 
     // MARK: Ranking
@@ -485,16 +538,50 @@ public enum SQLCompletionEngine {
         return parts.filter { !$0.isEmpty }
     }
 
-    private static func statementText(containing location: Int, in sql: String) -> String {
+    /// The statement under `location` along with the offset of `location` inside it.
+    private static func statementLocation(
+        containing location: Int,
+        in sql: String
+    ) -> (text: String, offset: Int) {
         let statements = SQLStatementSplitter.statements(in: sql)
         for statement in statements {
             if NSLocationInRange(location, statement.range)
                 || location == NSMaxRange(statement.range)
                 || (location > 0 && NSLocationInRange(location - 1, statement.range)) {
-                return statement.text
+                return (statement.text, max(0, location - statement.range.location))
             }
         }
-        return sql
+        return (sql, location)
+    }
+
+    /// Keywords after which a column suggestion means "compare this column",
+    /// so it can be completed as `column = ''` with the caret inside the quotes.
+    private static let conditionKeywords: Set<String> = [
+        "WHERE", "AND", "OR", "HAVING", "ON", "WHEN",
+    ]
+
+    /// True when the caret sits where a new condition starts, e.g. after
+    /// `WHERE `, `AND ` or `ON `. A comparison already typed (`=`, `>`, `LIKE`)
+    /// disables it so a value suggestion is not turned into a new condition.
+    private static func isConditionPosition(in statement: String, at offset: Int) -> Bool {
+        let ns = statement as NSString
+        var lastKeyword: SQLToken?
+
+        for token in SQLTokenizer.tokens(in: statement) {
+            guard NSMaxRange(token.range) <= offset else { break }
+            if token.kind == .keyword {
+                lastKeyword = token
+            }
+        }
+
+        guard let keyword = lastKeyword,
+              conditionKeywords.contains(ns.substring(with: keyword.range).uppercased())
+        else { return false }
+
+        let tailStart = NSMaxRange(keyword.range)
+        guard tailStart < offset else { return true }
+        let tail = ns.substring(with: NSRange(location: tailStart, length: offset - tailStart))
+        return !tail.contains { "=<>!".contains($0) }
     }
 
     // MARK: Identifier helpers
