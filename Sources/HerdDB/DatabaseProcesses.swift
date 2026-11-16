@@ -93,6 +93,11 @@ final class DatabaseProcesses {
         let file = url.path.replacingOccurrences(of: "'", with: "''")
         let direction = importing ? "FROM" : "TO"
         let command = "\\copy \(target) \(direction) '\(file)' WITH (FORMAT csv, HEADER true)"
+        if importing {
+            guard SafeModeGate.authorize(sql: command, config: config,
+                                         connections: connections,
+                                         action: "importar o CSV") else { return }
+        }
         launch("psql", arguments: ["--dbname", database, "--command", command],
                node: node, config: config, connections: connections,
                title: importing ? "Importar CSV" : "Exportar CSV")

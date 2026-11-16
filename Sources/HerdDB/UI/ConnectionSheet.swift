@@ -102,7 +102,24 @@ struct ConnectionSheet: View {
                             .toggleStyle(.switch)
                             .controlSize(.mini)
                     }
+                    Divider()
+                    field("Safe Mode") {
+                        Picker("Safe Mode", selection: $config.safeMode) {
+                            ForEach(SafeMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .fixedSize()
+                        .help(config.safeMode.summary)
+                    }
                 }
+
+                Text(config.safeMode.summary)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 4)
 
                 if !config.engine.isAvailable {
                     Label { Text("O driver de SQL Server chega na fase 6. Por enquanto só PostgreSQL conecta.") } icon: { Icon(.info, size: 14) }

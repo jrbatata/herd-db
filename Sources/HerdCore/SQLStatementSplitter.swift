@@ -203,3 +203,78 @@ public enum SQLStatementSplitter {
         return true
     }
 }
+
+/// Classifies scripts so the Safe Mode can let read-only commands through.
+public enum SQLClassification {
+    /// Keywords that cannot change data on their own.
+    private static let readOnlyKeywords: Set<String> = ["SELECT", "EXPLAIN", "SHOW", "VALUES", "TABLE"]
+
+    /// True when every statement in `sql` is read-only.
+    public static func isReadOnly(_ sql: String) -> Bool {
+        let statements = SQLStatementSplitter.split(sql)
+        guard !statements.isEmpty else { return false }
+        return statements.allSatisfy(isReadOnly(statement:))
+    }
+
+    public static func isReadOnly(statement: String) -> Bool {
+        guard let keyword = firstKeyword(in: statement) else { return false }
+        return readOnlyKeywords.contains(keyword)
+    }
+
+    /// First keyword of a statement, ignoring leading comments, parentheses and whitespace.
+    static func firstKeyword(in sql: String) -> String? {
+        let units = Array(sql.utf16)
+        var index = 0
+        let count = units.count
+
+        while index < count {
+            let unit = units[index]
+
+            if unit == 0x20 || unit == 0x09 || unit == 0x0A || unit == 0x0D || unit == 0x0B || unit == 0x0C || unit == ascii("(") {
+                index += 1
+                continue
+            }
+
+            // -- line comment
+            if unit == ascii("-"), index + 1 < count, units[index + 1] == ascii("-") {
+                index += 2
+                while index < count, units[index] != 0x0A { index += 1 }
+                continue
+            }
+
+            // /* block comment */
+            if unit == ascii("/"), index + 1 < count, units[index + 1] == ascii("*") {
+                index += 2
+                var depth = 1
+                while index < count, depth > 0 {
+                    if units[index] == ascii("/"), index + 1 < count, units[index + 1] == ascii("*") {
+                        depth += 1
+                        index += 2
+                    } else if units[index] == ascii("*"), index + 1 < count, units[index + 1] == ascii("/") {
+                        depth -= 1
+                        index += 2
+                    } else {
+                        index += 1
+                    }
+                }
+                continue
+            }
+
+            break
+        }
+
+        let start = index
+        while index < count {
+            let unit = units[index]
+            let isLetter = (0x41...0x5A).contains(unit) || (0x61...0x7A).contains(unit)
+            guard isLetter else { break }
+            index += 1
+        }
+        guard index > start else { return nil }
+        return String(decoding: units[start..<index], as: UTF16.self).uppercased()
+    }
+
+    private static func ascii(_ character: Character) -> UInt16 {
+        UInt16(character.asciiValue ?? 0)
+    }
+}

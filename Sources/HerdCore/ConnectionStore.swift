@@ -59,6 +59,18 @@ public final class ConnectionStore {
         try passwords.setPassword(password, for: config.id)
     }
 
+    /// Updates metadata without touching the stored password.
+    public func update(_ config: ConnectionConfig) throws {
+        var updated = connections
+        if let index = updated.firstIndex(where: { $0.id == config.id }) {
+            updated[index] = config
+        } else {
+            updated.append(config)
+        }
+        try persist(updated)
+        connections = updated
+    }
+
     public func remove(_ config: ConnectionConfig) throws {
         var updated = connections
         updated.removeAll { $0.id == config.id }

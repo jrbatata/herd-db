@@ -77,6 +77,8 @@ struct QueryTabView: View {
 
             databasePicker
 
+            safeModeButton
+
             Spacer(minLength: 8)
 
             status
@@ -144,6 +146,56 @@ struct QueryTabView: View {
         .frame(maxWidth: 190)
         .disabled(tab.isRunning)
         .help("Banco de dados deste script")
+    }
+
+    private var safeModeButton: some View {
+        let mode = app.connections.connection(id: tab.connectionID)?.safeMode ?? .silent
+        let tint = mode.isRestricted ? mode.tint : Color.secondary
+        return Menu {
+            ForEach(SafeMode.allCases) { option in
+                Button {
+                    changeSafeMode(to: option)
+                } label: {
+                    Text(option == mode ? "✓ \(option.displayName)" : option.displayName)
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 6, height: 6)
+                Text(mode.displayName)
+                    .font(.system(size: 10.5, weight: .medium))
+            }
+            .foregroundStyle(tint)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(tint.opacity(0.12), in: Capsule())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Safe Mode: \(mode.summary)")
+    }
+
+    private func changeSafeMode(to mode: SafeMode) {
+        guard let config = app.connections.connection(id: tab.connectionID),
+              config.safeMode != mode else { return }
+        if config.safeMode.requiresPassword,
+           !SafeModeGate.confirmPassword(config: config, connections: app.connections,
+                                         action: "alterar o Safe Mode") {
+            return
+        }
+        var updated = config
+        updated.safeMode = mode
+        do {
+            try app.update(updated)
+        } catch {
+            workspace.alert = AlertMessage(
+                title: "Não foi possível alterar o Safe Mode",
+                message: error.localizedDescription
+            )
+        }
     }
 
     private var databaseOptions: [String] {
@@ -264,6 +316,11 @@ struct QueryTabView: View {
             },
             onCommitSQL: tab.sourceTable == nil ? nil : { statements in
                 guard let config = app.connections.connection(id: tab.connectionID) else { return }
+                guard SafeModeGate.authorize(statements: statements, config: config,
+                                             connections: app.connections,
+                                             action: "gravar as alterações do grid") else {
+                    throw CancellationError()
+                }
                 let driver = app.drivers.driver(for: config)
                 let txSQL = (["BEGIN;"] + statements + ["COMMIT;"]).joined(separator: "\n")
                 _ = try await driver.run(txSQL, database: tab.database)

@@ -897,6 +897,9 @@ private struct ResultTable: View {
                 try await onCommitSQL(statements)
                 isCommitting = false
                 discardChanges()
+            } catch is CancellationError {
+                // Safe Mode cancelado: mantém as edições pendentes.
+                isCommitting = false
             } catch {
                 isCommitting = false
                 commitError = error.localizedDescription

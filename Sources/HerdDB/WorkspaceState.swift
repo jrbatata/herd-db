@@ -94,7 +94,12 @@ final class WorkspaceState {
     }
 
     var windowTitle: String {
-        activeTabID == processesTabID && processes.visible ? "Processos" : (activeTab?.title ?? "herd")
+        if activeTabID == processesTabID && processes.visible { return "Processos" }
+        guard let tab = activeTab else { return "herd" }
+        if let mode = app.connections.connection(id: tab.connectionID)?.safeMode, mode.isRestricted {
+            return "\(tab.title) · \(mode.displayName)"
+        }
+        return tab.title
     }
 
     func openProcesses() {

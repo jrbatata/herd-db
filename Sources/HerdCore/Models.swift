@@ -2,6 +2,54 @@ import Foundation
 
 // MARK: - Connections
 
+/// How strongly the app guards operations that may change data.
+public enum SafeMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case silent
+    case alert
+    case alertReadOnly
+    case secure
+    case secureReadOnly
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .silent: "Silencioso"
+        case .alert: "Alerta"
+        case .alertReadOnly: "Alerta 2"
+        case .secure: "Seguro"
+        case .secureReadOnly: "Seguro 2"
+        }
+    }
+
+    public var summary: String {
+        switch self {
+        case .silent:
+            "Executa sem confirmação."
+        case .alert:
+            "Confirma antes de executar qualquer comando."
+        case .alertReadOnly:
+            "Confirma antes de executar, exceto SELECT, EXPLAIN e SHOW."
+        case .secure:
+            "Pede a senha da conexão antes de executar qualquer comando."
+        case .secureReadOnly:
+            "Pede a senha, exceto para SELECT, EXPLAIN e SHOW."
+        }
+    }
+
+    /// Any level other than `silent` guards the connection.
+    public var isRestricted: Bool { self != .silent }
+
+    public var requiresPassword: Bool {
+        self == .secure || self == .secureReadOnly
+    }
+
+    /// Read-only statements bypass the guard in the "2" variants.
+    public var skipsReadOnly: Bool {
+        self == .alertReadOnly || self == .secureReadOnly
+    }
+}
+
 public enum DatabaseEngine: String, Codable, CaseIterable, Identifiable, Sendable {
     case postgres
     case sqlServer
@@ -44,6 +92,12 @@ public struct ConnectionConfig: Identifiable, Codable, Hashable, Sendable {
     public var username: String
     public var database: String
     public var useTLS: Bool
+    /// Confirmation level applied to every operation that can change data.
+    public var safeMode: SafeMode
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, engine, host, port, username, database, useTLS, safeMode
+    }
 
     public init(
         id: UUID = UUID(),
@@ -53,7 +107,8 @@ public struct ConnectionConfig: Identifiable, Codable, Hashable, Sendable {
         port: Int = DatabaseEngine.postgres.defaultPort,
         username: String = NSUserName(),
         database: String = "",
-        useTLS: Bool = false
+        useTLS: Bool = false,
+        safeMode: SafeMode = .silent
     ) {
         self.id = id
         self.name = name
@@ -63,6 +118,21 @@ public struct ConnectionConfig: Identifiable, Codable, Hashable, Sendable {
         self.username = username
         self.database = database
         self.useTLS = useTLS
+        self.safeMode = safeMode
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        engine = try container.decode(DatabaseEngine.self, forKey: .engine)
+        host = try container.decode(String.self, forKey: .host)
+        port = try container.decode(Int.self, forKey: .port)
+        username = try container.decode(String.self, forKey: .username)
+        database = try container.decode(String.self, forKey: .database)
+        useTLS = try container.decodeIfPresent(Bool.self, forKey: .useTLS) ?? false
+        // Configurações antigas não têm o campo; o padrão é Silencioso.
+        safeMode = try container.decodeIfPresent(SafeMode.self, forKey: .safeMode) ?? .silent
     }
 
     public var endpoint: String { "\(host):\(port)" }

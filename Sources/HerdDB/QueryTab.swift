@@ -93,6 +93,9 @@ final class QueryTab: Identifiable {
             return
         }
 
+        guard SafeModeGate.authorize(sql: sql, config: config, connections: app.connections,
+                                     action: "executar o script") else { return }
+
         let driver = app.drivers.driver(for: config)
         let database = self.database.trimmingCharacters(in: .whitespacesAndNewlines)
         let targetDatabase = database.isEmpty ? config.maintenanceDatabase : database

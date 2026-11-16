@@ -1955,10 +1955,12 @@ struct CreateTableSheet: View {
     private func saveTable() {
         guard isValid, !isSaving else { return }
         guard let config = app.connections.connection(id: wizard.connectionID) else { return }
+        let sql = generatedSQL
+        guard SafeModeGate.authorize(sql: sql, config: config, connections: app.connections,
+                                     action: "criar a tabela") else { return }
         isSaving = true
         executionError = nil
         bannerDismissed = false
-        let sql = generatedSQL
         let driver = app.drivers.driver(for: config)
 
         Task {
@@ -2545,10 +2547,12 @@ struct CreateSchemaSheet: View {
     private func saveSchema() {
         guard isValid, !isSaving else { return }
         guard let config = app.connections.connection(id: wizard.connectionID) else { return }
+        let sql = generatedSQL
+        guard SafeModeGate.authorize(sql: sql, config: config, connections: app.connections,
+                                     action: "criar o schema") else { return }
         isSaving = true
         executionError = nil
         bannerDismissed = false
-        let sql = generatedSQL
         let driver = app.drivers.driver(for: config)
 
         Task {
@@ -2828,9 +2832,11 @@ struct DropObjectSheet: View {
     private func executeDrop() {
         guard !isExecuting, isConfirmed else { return }
         guard let config = app.connections.connection(id: wizard.connectionID) else { return }
+        let sql = generatedSQL
+        guard SafeModeGate.authorize(sql: sql, config: config, connections: app.connections,
+                                     action: "excluir o objeto") else { return }
         isExecuting = true
         executionError = nil
-        let sql = generatedSQL
         let targetDB = wizard.kind == .database ? "postgres" : wizard.database
         let driver = app.drivers.driver(for: config)
 
@@ -3278,9 +3284,11 @@ struct CreateTableSubObjectSheet: View {
     private func save() {
         guard isValid, !trimmedName.isEmpty, !isSaving else { return }
         guard let config = app.connections.connection(id: wizard.connectionID) else { return }
+        let sql = generatedSQL
+        guard SafeModeGate.authorize(sql: sql, config: config, connections: app.connections,
+                                     action: "criar o objeto") else { return }
         isSaving = true
         executionError = nil
-        let sql = generatedSQL
         let driver = app.drivers.driver(for: config)
 
         Task {
@@ -3607,7 +3615,6 @@ struct CreateDatabaseSheet: View {
     private func saveDatabase() {
         guard isValid, !isSaving else { return }
         guard let config = app.connections.connection(id: wizard.connectionID) else { return }
-        isSaving = true
         executionError = nil
         let quotedDB = dialect.quote(trimmedName)
         var options: [String] = []
@@ -3619,6 +3626,9 @@ struct CreateDatabaseSheet: View {
         if let limit = Int(connectionLimit), limit != -1 { options.append("CONNECTION LIMIT = \(limit)") }
         if isTemplate { options.append("IS_TEMPLATE = true") }
         let createSQL = "CREATE DATABASE \(quotedDB) WITH \(options.joined(separator: " "));"
+        guard SafeModeGate.authorize(sql: createSQL, config: config, connections: app.connections,
+                                     action: "criar o banco de dados") else { return }
+        isSaving = true
         let trimmedComment = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         let driver = app.drivers.driver(for: config)
 
@@ -4147,9 +4157,11 @@ struct TableStructureSheet: View {
     private func applyAlter() {
         guard !alterStatements.isEmpty, !isApplying else { return }
         guard let config = app.connections.connection(id: state.connectionID) else { return }
+        let sql = alterSQL
+        guard SafeModeGate.authorize(sql: sql, config: config, connections: app.connections,
+                                     action: "aplicar as alterações de estrutura") else { return }
         isApplying = true
         executionError = nil
-        let sql = alterSQL
         let driver = app.drivers.driver(for: config)
 
         Task {

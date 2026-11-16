@@ -55,8 +55,29 @@ final class ConnectionStoreTests: XCTestCase {
         XCTAssertNil(passwords.values[config.id])
     }
 
-    func testCorruptedFileSurfacesLoadError() throws {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    func testUpdateKeepsPasswordAndSafeModeRoundTrips() throws {
+        let store = ConnectionStore(directory: directory, passwords: passwords)
+        var config = ConnectionConfig(name: "prod", host: "10.0.0.1")
+        try store.upsert(config, password: "segredo")
+
+        config.safeMode = .secure
+        try store.update(config)
+        XCTAssertEqual(store.connection(id: config.id)?.safeMode, .secure)
+        XCTAssertEqual(store.password(for: config.id), "segredo")
+
+        let reloaded = ConnectionStore(directory: directory, passwords: passwords)
+        XCTAssertEqual(reloaded.connection(id: config.id)?.safeMode, .secure)
+    }
+
+    func testDecodingLegacyConfigWithoutSafeModeDefaultsToSilent() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","name":"antiga","engine":"postgres","host":"localhost","port":5432,"username":"u","database":"","useTLS":false}
+        """
+        let config = try JSONDecoder().decode(ConnectionConfig.self, from: Data(json.utf8))
+        XCTAssertEqual(config.safeMode, .silent)
+    }
+
+    func testCorruptedFileSurfacesLoadError() throws {        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try Data("not json".utf8).write(to: directory.appendingPathComponent("connections.json"))
 
         let store = ConnectionStore(directory: directory, passwords: passwords)

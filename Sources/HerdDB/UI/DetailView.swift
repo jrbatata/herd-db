@@ -142,6 +142,14 @@ struct TopBarView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .foregroundStyle(isActive ? Color.primary : Color.secondary)
 
+            if let mode = workspace.app.connections.connection(id: tab.connectionID)?.safeMode,
+               mode.isRestricted {
+                Circle()
+                    .fill(mode.tint)
+                    .frame(width: 6, height: 6)
+                    .help("Safe Mode: \(mode.displayName)")
+            }
+
             Button {
                 workspace.closeTab(tab)
             } label: {
