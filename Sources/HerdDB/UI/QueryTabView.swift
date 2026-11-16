@@ -71,6 +71,16 @@ struct QueryTabView: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
 
+            if app.connections.connection(id: tab.connectionID)?.isProduction == true {
+                Text("PROD")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Color.red, in: Capsule())
+                    .help("Conexão de produção")
+            }
+
             Text("·")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)

@@ -41,7 +41,7 @@ Cadastre servidores locais ou remotos em segundos, teste a conexão antes de sal
 
 ## Roadmap
 
-**Estado:** fases 1, 2, 3, 4, 5 e 7 concluídas; fase 6 em standby; fase 8 em polimento final.
+**Estado:** fases 1, 2, 3, 4, 5 e 7 concluídas; fase 6 em standby; fase 8 em polimento final; fase 9 planejada; fase 10 (diagrama ER) futura.
 
 | Fase | Escopo                                             | Status             |
 | ---- | -------------------------------------------------- | ------------------ |
@@ -53,6 +53,8 @@ Cadastre servidores locais ou remotos em segundos, teste a conexão antes de sal
 | 6    | FreeTDS + SQL Server                               | ⏸️ Standby         |
 | 7    | Backup/restore, novo banco e geração de scripts    | ✅ Concluída       |
 | 8    | Polimento, acessibilidade e empacotamento          | 🚧 Polimento final |
+| 9    | Safe Mode, ⌘P, console de log, processos, filtros e I/O | 📋 Planejada |
+| 10   | Diagrama ER                                        | 🔮 Futura          |
 
 ## Plano detalhado por fases
 
@@ -163,6 +165,81 @@ Cadastre servidores locais ou remotos em segundos, teste a conexão antes de sal
 - [ ] Paginação e busca persistida no histórico de consultas além do limite atual de 200 entradas por conexão/banco
 - [ ] Revisão de acessibilidade
 - [ ] Notarização e distribuição
+
+### Fase 9 — Produtividade e segurança no dia a dia 📋 (Planejada)
+
+Itens inspirados na documentação do TablePlus, em ordem de prioridade. Cada item é independente e cabe na arquitetura atual (sidebar, painel inferior, aba Processos, grid e editor).
+
+#### 9.1 Safe Mode por conexão (prioridade 1)
+
+- [x] Campo "nível de segurança" no formulário de conexão: **Silencioso** (padrão), **Alerta** (confirma antes de executar) e **Seguro** (pede a senha da conexão)
+- [x] Variantes "2" de Alerta e Seguro: `SELECT`, `EXPLAIN` e `SHOW` não pedem confirmação
+- [x] Alterar o nível pela barra de ferramentas da aba; em Seguro, a troca exige senha ou Touch ID
+- [x] Preferência "nível padrão para novas conexões" e "desbloquear com Touch ID"
+- [x] A confirmação vale para o editor SQL, para o commit do grid ("Revisar alterações SQL"), para DDL dos wizards e para importação
+- [x] Sinal visual de conexão de produção (cor na aba e na barra de título), além do indicador de Safe Mode
+
+#### 9.2 Abrir Qualquer Coisa — `⌘P` (prioridade 2)
+
+- [ ] Paleta de busca fuzzy sobre bancos, schemas, tabelas, views, views materializadas, funções/procedures, queries salvas e ações do app
+- [ ] `Return` abre o item; `⌘↵` abre a tabela em nova aba; `↑`/`↓` (e `⌃P`/`⌃N`) navegam; `Tab` completa; `Esc` limpa e, no segundo toque, fecha
+- [ ] Prefixo `^` (início do nome), sufixo `$` (fim) e os dois juntos (nome exato)
+- [ ] Listar funções e procedures na árvore de objetos, pois a busca precisa alcançá-las
+- [ ] Ações com atalho: Abrir Conexão (`⇧⌘K`), Abrir Banco (`⌘K`), Backup, Restore, Cancelar Consultas, Configurações
+
+#### 9.3 Console de log — `⌃⌘C` (prioridade 3)
+
+- [ ] Painel inferior com todas as consultas enviadas ao servidor, inclusive as internas (catálogo, paginação, commit do grid), com horário
+- [ ] Limite de 1.000 entradas, realce de sintaxe opcional, botão "Limpar" e substituição de consultas muito grandes por uma nota resumida
+- [ ] Separado do histórico, que continua guardando apenas o que o usuário executa
+
+#### 9.4 Processos ao vivo e cancelamento por sessão (prioridade 4)
+
+- [ ] Aba **Processos** lista as sessões de `pg_stat_activity` (usuário, banco, estado, duração, consulta), atualizada sob demanda ou por intervalo
+- [ ] Ações **Cancelar** (`pg_cancel_backend`) e **Encerrar** (`pg_terminate_backend`) com confirmação
+- [ ] O botão Cancelar do editor continua cancelando a própria execução; `⌘.` mantém o comportamento atual
+- [ ] Respeitar permissões: sessões de outros usuários exigem papel adequado, com mensagem clara quando negado
+
+#### 9.5 Lacunas do editor, filtros e importação/exportação (prioridade 5)
+
+Comparação com as páginas Editor Basics, Filter e Import & Export do TablePlus.
+
+**Editor SQL**
+
+- [ ] Limite de linhas ao lado do botão Executar: Sem limite ou de 100 a 500.000, aplicado a `SELECT` sem `LIMIT` e salvo por conexão
+- [ ] Alternar comentário em bloco (`⌥⌘/`), além do comentário de linha atual
+- [ ] Dobrar/expandir trechos pela calha (instruções e linhas indentadas), lembrando as dobras em arquivos salvos
+- [ ] Executar padrão configurável (executar atual ou executar tudo) no menu do botão Executar
+- [ ] Consultas favoritas: "Adicionar às consultas" pelo menu do botão ou do contexto de uma seleção
+
+**Filtros do grid**
+
+- [ ] Barra de filtros estruturados (coluna, operador, valor) ao abrir com `⌘F` quando o foco está no grid, com **SQL bruto** como opção de coluna
+- [ ] Operadores: `=`, `<>`, `<`, `>`, `<=`, `>=`, `IN`, `NOT IN`, `IS NULL`, `IS NOT NULL`, `BETWEEN`, `NOT BETWEEN`, `LIKE`, `ILIKE`, Contém, Não contém, Começa com, Termina com
+- [ ] Vários filtros (adicionar e remover com `⌘I` e `⇧⌘I`), marcação individual, combinação com `AND` e opção de aplicar com `OR`
+- [ ] Botão **SQL** para ver o `WHERE` gerado; **Limpar**; `Esc` oculta a barra
+- [ ] Filtro rápido no menu da célula (= valor, Contém, Começa com, `IN`, `IS NULL`) e "Filtrar por esta coluna" no cabeçalho
+- [ ] Filtro de colunas (`⌥⌘F`) e "Ocultar esta coluna / Mostrar todas" no cabeçalho
+- [ ] Preferências: coluna, operador e estado padrão (lembrar o último estado por tabela, sempre mostrar ou sempre ocultar) e ordenação padrão da tabela
+
+**Importação e exportação**
+
+- [ ] Importar **JSON** e **dump SQL**, além do CSV atual
+- [ ] Assistente de CSV com pré-visualização das 100 primeiras linhas, delimitador, aspas, codificação, "primeira linha é cabeçalho" e mapeamento por coluna (incluindo "Não importar")
+- [ ] Opção de "Criar nova tabela" na importação, com detecção de tipos
+- [ ] Estratégia ao inserir: parar no erro ou atualizar em conflito (`ON CONFLICT DO UPDATE`)
+- [ ] Exportar **JSON**, **SQL** (estrutura, `DROP` e dados, com Gzip opcional) e **Excel (`.xlsx`)**, além do CSV atual
+- [ ] Opções de CSV: delimitador, aspas, quebra de linha, separador decimal, NULL como vazio e cabeçalho na primeira linha
+- [ ] Exportar várias tabelas de uma vez (`⇧⌘E`), com nomes de arquivo personalizáveis (conexão, banco, tabela, data) e exportação de apenas as colunas selecionadas
+- [ ] Importação e exportação em segundo plano, com progresso e "Abrir pasta" ao terminar
+
+### Fase 10 — Diagrama ER 🔮 (Futura)
+
+- [ ] Diagrama entidade-relacionamento de um schema ou banco, gerado a partir das chaves estrangeiras que o Herd já descobre
+- [ ] Tabelas com colunas, indicadores de PK/FK e linhas de relacionamento; navegar por zoom e arraste
+- [ ] Abrir a tabela ou a estrutura (`⌘I`) a partir do diagrama
+- [ ] Exportar o diagrama como imagem
+- [ ] Ação "Diagrama" disponível em Abrir Qualquer Coisa (`⌘P`)
 
 ## Atalhos
 

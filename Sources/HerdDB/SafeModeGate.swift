@@ -1,5 +1,7 @@
 import AppKit
+import Dispatch
 import HerdCore
+import LocalAuthentication
 import SwiftUI
 
 /// Centraliza a confirmação do Safe Mode.
@@ -67,6 +69,16 @@ enum SafeModeGate {
         connections: ConnectionStore,
         action: String
     ) -> Bool {
+        if Preferences.touchIDEnabled {
+            let reason = "Confirme para \(action) na conexão \(config.name)."
+            switch biometricUnlock(reason: reason) {
+            case .success:
+                return true
+            case .failed, .unavailable:
+                break
+            }
+        }
+
         guard let expected = connections.password(for: config.id), !expected.isEmpty else {
             // Sem senha no Chaveiro não há o que verificar: cai para a confirmação simples.
             let alert = NSAlert()
@@ -102,6 +114,50 @@ enum SafeModeGate {
             error.runModal()
         }
         return false
+    }
+
+    private enum BiometricResult {
+        case success
+        case failed
+        case unavailable
+    }
+
+    /// Wrapper síncrono do Touch ID, no mesmo estilo dos alerts modais do app.
+    /// O callback do LocalAuthentication chega numa fila privada, por isso o semáforo.
+    private static func biometricUnlock(reason: String) -> BiometricResult {
+        let context = LAContext()
+        context.localizedCancelTitle = "Usar senha"
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
+            return .unavailable
+        }
+
+        let box = ResultBox()
+        let semaphore = DispatchSemaphore(value: 0)
+        context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, _ in
+            box.set(success)
+            semaphore.signal()
+        }
+        guard semaphore.wait(timeout: .now() + 30) == .success else { return .failed }
+        return box.value ? .success : .failed
+    }
+
+    /// Contêiner com lock para o resultado do callback biométrico.
+    private final class ResultBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored = false
+
+        func set(_ value: Bool) {
+            lock.lock()
+            stored = value
+            lock.unlock()
+        }
+
+        var value: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return stored
+        }
     }
 
     private static func preview(_ sql: String) -> String {

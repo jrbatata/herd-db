@@ -130,6 +130,7 @@ struct TopBarView: View {
     private func tabItem(_ tab: QueryTab) -> some View {
         let isActive = workspace.activeTabID == tab.id
         let isHovered = hoveredTab == tab.id
+        let connection = workspace.app.connections.connection(id: tab.connectionID)
 
         return HStack(spacing: 7) {
             Icon(tab.state.tabSymbol, size: 14, solid: isActive)
@@ -142,12 +143,16 @@ struct TopBarView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .foregroundStyle(isActive ? Color.primary : Color.secondary)
 
-            if let mode = workspace.app.connections.connection(id: tab.connectionID)?.safeMode,
-               mode.isRestricted {
+            if let connection, connection.isProduction {
                 Circle()
-                    .fill(mode.tint)
+                    .fill(Color.red)
                     .frame(width: 6, height: 6)
-                    .help("Safe Mode: \(mode.displayName)")
+                    .help("Conexão de produção")
+            } else if let connection, connection.safeMode.isRestricted {
+                Circle()
+                    .fill(connection.safeMode.tint)
+                    .frame(width: 6, height: 6)
+                    .help("Safe Mode: \(connection.safeMode.displayName)")
             }
 
             Button {

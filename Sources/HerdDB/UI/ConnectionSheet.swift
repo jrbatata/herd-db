@@ -114,6 +114,14 @@ struct ConnectionSheet: View {
                         .fixedSize()
                         .help(config.safeMode.summary)
                     }
+                    Divider()
+                    field("Produção") {
+                        Toggle("Produção", isOn: $config.isProduction)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .controlSize(.mini)
+                            .help("Destaca a conexão como produção na aba e na barra de título")
+                    }
                 }
 
                 Text(config.safeMode.summary)

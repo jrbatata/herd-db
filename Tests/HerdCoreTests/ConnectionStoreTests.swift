@@ -61,12 +61,15 @@ final class ConnectionStoreTests: XCTestCase {
         try store.upsert(config, password: "segredo")
 
         config.safeMode = .secure
+        config.isProduction = true
         try store.update(config)
         XCTAssertEqual(store.connection(id: config.id)?.safeMode, .secure)
+        XCTAssertEqual(store.connection(id: config.id)?.isProduction, true)
         XCTAssertEqual(store.password(for: config.id), "segredo")
 
         let reloaded = ConnectionStore(directory: directory, passwords: passwords)
         XCTAssertEqual(reloaded.connection(id: config.id)?.safeMode, .secure)
+        XCTAssertEqual(reloaded.connection(id: config.id)?.isProduction, true)
     }
 
     func testDecodingLegacyConfigWithoutSafeModeDefaultsToSilent() throws {
@@ -75,6 +78,7 @@ final class ConnectionStoreTests: XCTestCase {
         """
         let config = try JSONDecoder().decode(ConnectionConfig.self, from: Data(json.utf8))
         XCTAssertEqual(config.safeMode, .silent)
+        XCTAssertFalse(config.isProduction)
     }
 
     func testCorruptedFileSurfacesLoadError() throws {        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

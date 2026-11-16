@@ -94,9 +94,11 @@ public struct ConnectionConfig: Identifiable, Codable, Hashable, Sendable {
     public var useTLS: Bool
     /// Confirmation level applied to every operation that can change data.
     public var safeMode: SafeMode
+    /// Marks a connection as production so the UI can highlight it.
+    public var isProduction: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, engine, host, port, username, database, useTLS, safeMode
+        case id, name, engine, host, port, username, database, useTLS, safeMode, isProduction
     }
 
     public init(
@@ -108,7 +110,8 @@ public struct ConnectionConfig: Identifiable, Codable, Hashable, Sendable {
         username: String = NSUserName(),
         database: String = "",
         useTLS: Bool = false,
-        safeMode: SafeMode = .silent
+        safeMode: SafeMode = .silent,
+        isProduction: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -119,6 +122,7 @@ public struct ConnectionConfig: Identifiable, Codable, Hashable, Sendable {
         self.database = database
         self.useTLS = useTLS
         self.safeMode = safeMode
+        self.isProduction = isProduction
     }
 
     public init(from decoder: Decoder) throws {
@@ -131,8 +135,9 @@ public struct ConnectionConfig: Identifiable, Codable, Hashable, Sendable {
         username = try container.decode(String.self, forKey: .username)
         database = try container.decode(String.self, forKey: .database)
         useTLS = try container.decodeIfPresent(Bool.self, forKey: .useTLS) ?? false
-        // Configurações antigas não têm o campo; o padrão é Silencioso.
+        // Configurações antigas não têm os campos; os padrões são Silencioso e não-produção.
         safeMode = try container.decodeIfPresent(SafeMode.self, forKey: .safeMode) ?? .silent
+        isProduction = try container.decodeIfPresent(Bool.self, forKey: .isProduction) ?? false
     }
 
     public var endpoint: String { "\(host):\(port)" }

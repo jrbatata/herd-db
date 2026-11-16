@@ -96,10 +96,11 @@ final class WorkspaceState {
     var windowTitle: String {
         if activeTabID == processesTabID && processes.visible { return "Processos" }
         guard let tab = activeTab else { return "herd" }
-        if let mode = app.connections.connection(id: tab.connectionID)?.safeMode, mode.isRestricted {
-            return "\(tab.title) · \(mode.displayName)"
-        }
-        return tab.title
+        guard let config = app.connections.connection(id: tab.connectionID) else { return tab.title }
+        var parts = [tab.title]
+        if config.isProduction { parts.append("Produção") }
+        if config.safeMode.isRestricted { parts.append(config.safeMode.displayName) }
+        return parts.joined(separator: " · ")
     }
 
     func openProcesses() {
@@ -619,7 +620,7 @@ final class WorkspaceState {
 
     func presentNewConnection() {
         connectionEditor = ConnectionEditorState(
-            config: ConnectionConfig(username: NSUserName()),
+            config: ConnectionConfig(username: NSUserName(), safeMode: Preferences.defaultSafeMode),
             password: "",
             isNew: true
         )

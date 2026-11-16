@@ -16,6 +16,10 @@ struct HerdDBApp: App {
         .commands {
             HerdCommands()
         }
+
+        Settings {
+            PreferencesView()
+        }
     }
 }
 
