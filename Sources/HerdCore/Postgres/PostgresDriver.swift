@@ -13,6 +13,7 @@ public actor PostgresDriver: DatabaseDriver {
     private let recorder: QueryLogRecorder?
     private var clients: [String: PostgresClient] = [:]
     private var runners: [String: Task<Void, Never>] = [:]
+    private var databaseListTask: Task<[DatabaseInfo], Error>?
 
     public init(config: ConnectionConfig, password: String?, recorder: QueryLogRecorder? = nil) {
         self.config = config
@@ -75,6 +76,17 @@ public actor PostgresDriver: DatabaseDriver {
     }
 
     public func listDatabases() async throws -> [DatabaseInfo] {
+        if let databaseListTask {
+            return try await databaseListTask.value
+        }
+
+        let task = Task { try await fetchDatabases() }
+        databaseListTask = task
+        defer { databaseListTask = nil }
+        return try await task.value
+    }
+
+    private func fetchDatabases() async throws -> [DatabaseInfo] {
         let client = try await connectClient(config.maintenanceDatabase)
         let query: PostgresQuery = """
             SELECT datname
@@ -556,6 +568,8 @@ public actor PostgresDriver: DatabaseDriver {
     }
 
     public func shutdown() async {
+        databaseListTask?.cancel()
+        databaseListTask = nil
         for task in runners.values { task.cancel() }
         runners.removeAll()
         clients.removeAll()
