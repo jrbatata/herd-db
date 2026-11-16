@@ -15,7 +15,7 @@ extension FocusedValues {
 
 struct MainWindow: View {
     @Environment(AppModel.self) private var app
-    @State private var workspace: WorkspaceState
+    @State private var workspaceHolder: WorkspaceHolder
     @AppStorage("sidebarWidth") private var sidebarWidth: Double = 270
     @State private var dragStartWidth: Double?
     @State private var isFullScreen = false
@@ -24,13 +24,14 @@ struct MainWindow: View {
 
     /// Espaço reservado à esquerda para os semáforos + botão da sidebar.
     private let controlsInset: CGFloat = 128
+    private var workspace: WorkspaceState { workspaceHolder.workspace }
 
     init(app: AppModel) {
-        _workspace = State(initialValue: WorkspaceState(app: app))
+        _workspaceHolder = State(initialValue: WorkspaceHolder(app: app))
     }
 
     var body: some View {
-        @Bindable var workspace = workspace
+        @Bindable var workspace = workspaceHolder.workspace
 
         ZStack(alignment: .topLeading) {
             VisualEffectBackground(material: .sidebar)
@@ -187,5 +188,17 @@ struct MainWindow: View {
                     .onEnded { _ in dragStartWidth = nil }
             )
             .padding(.horizontal, -3)
+    }
+}
+
+/// `View.init` may run many times during SwiftUI reconciliation. Keep workspace
+/// creation lazy so temporary `MainWindow` values cannot connect to the database.
+@MainActor
+private final class WorkspaceHolder {
+    private let app: AppModel
+    lazy var workspace = WorkspaceState(app: app)
+
+    init(app: AppModel) {
+        self.app = app
     }
 }
