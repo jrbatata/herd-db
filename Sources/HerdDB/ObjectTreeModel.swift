@@ -139,6 +139,19 @@ final class ObjectTreeModel {
             return
         }
         expanded.insert(node.id)
+
+        // A tabela é o destino mais comum ao abrir um schema. Deixe somente
+        // essa seção aberta por padrão; views e rotinas continuam recolhidas.
+        if node.kind == .schema {
+            let tablesFolderID = node.id + "\u{1F}tables"
+            expanded.insert(tablesFolderID)
+
+            if let tablesFolder = children[node.id]?.first(where: { $0.kind == .tablesFolder }),
+               children[tablesFolderID] == nil {
+                Task { await loadNode(tablesFolder) }
+            }
+        }
+
         if children[node.id] == nil {
             Task { await loadNode(node) }
         }
