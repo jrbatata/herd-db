@@ -63,22 +63,19 @@ struct HerdCommands: Commands {
         }
 
         CommandGroup(replacing: .newItem) {
-            Menu("Novo") {
-                Button("Script") { workspace?.newQueryTab() }
-                    .keyboardShortcut("t", modifiers: .command)
-                    .disabled(workspace == nil)
-                Button("Conexão…") { workspace?.presentNewConnection() }
-                    .keyboardShortcut("n", modifiers: [.command, .shift])
-                    .disabled(workspace == nil)
-                Divider()
-                Menu("Criar") {
-                    ForEach(NewDBObject.allCases, id: \.self) { object in
-                        Button(object.rawValue) { workspace?.create(object) }
-                            .keyboardShortcut(object.shortcut, modifiers: [.command, .option])
-                            .disabled(workspace?.canCreate(object) != true)
-                    }
-                }
+            Button("Novo script") { workspace?.newQueryTab() }
+                .keyboardShortcut("t", modifiers: .command)
+                .disabled(workspace == nil)
+            Button("Nova conexão…") { workspace?.presentNewConnection() }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .disabled(workspace == nil)
+            Divider()
+            ForEach(NewDBObject.allCases, id: \.self) { object in
+                Button(object.fileMenuTitle) { workspace?.create(object) }
+                    .keyboardShortcut(object.shortcut, modifiers: [.command, .option])
+                    .disabled(workspace?.canCreate(object) != true)
             }
+            Divider()
             Button("Abrir arquivo SQL…") { workspace?.openSQLFile() }
                 .keyboardShortcut("o", modifiers: .command)
                 .disabled(workspace == nil)
@@ -245,6 +242,19 @@ struct HerdCommands: Commands {
 }
 
 private extension NewDBObject {
+    var fileMenuTitle: String {
+        switch self {
+        case .database: "Novo banco de dados…"
+        case .table: "Nova tabela…"
+        case .schema: "Novo schema…"
+        case .column: "Nova coluna…"
+        case .index: "Novo índice…"
+        case .rule: "Nova regra…"
+        case .trigger: "Novo trigger…"
+        case .policy: "Nova política RLS…"
+        }
+    }
+
     var shortcut: KeyEquivalent {
         switch self {
         case .database: "d"
