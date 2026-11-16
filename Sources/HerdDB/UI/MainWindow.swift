@@ -89,6 +89,14 @@ struct MainWindow: View {
             DropObjectSheet(wizard: wizard, workspace: workspace)
                 .environment(app)
         }
+        .sheet(item: $workspace.backupWizard) { wizard in
+            BackupSheet(wizard: wizard, workspace: workspace)
+                .environment(app)
+        }
+        .sheet(item: $workspace.restoreWizard) { wizard in
+            RestoreSheet(wizard: wizard, workspace: workspace)
+                .environment(app)
+        }
         .sheet(item: $workspace.tableSubObjectWizard) { wizard in
             CreateTableSubObjectSheet(wizard: wizard, workspace: workspace)
                 .environment(app)

@@ -4306,7 +4306,7 @@ private struct WizardTabButton: View {
     }
 }
 
-private struct WizardFormCard<Content: View>: View {
+struct WizardFormCard<Content: View>: View {
     let title: String?
     @ViewBuilder let content: () -> Content
 
@@ -4340,7 +4340,7 @@ private struct WizardFormCard<Content: View>: View {
     }
 }
 
-private struct WizardFormRow<Content: View>: View {
+struct WizardFormRow<Content: View>: View {
     let label: String
     var isInvalid: Bool = false
     @ViewBuilder let content: () -> Content
@@ -4357,7 +4357,7 @@ private struct WizardFormRow<Content: View>: View {
     }
 }
 
-private struct WizardValidationBanner: View {
+struct WizardValidationBanner: View {
     let message: String
     let onClose: () -> Void
 

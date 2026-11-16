@@ -5,6 +5,25 @@ import Observation
 import SwiftUI
 import UniformTypeIdentifiers
 
+struct BackupOptions {
+    var fileURL: URL
+    var ignoreOwnership = true
+    var ignorePrivileges = true
+
+    var isPlainSQL: Bool { fileURL.pathExtension.lowercased() == "sql" }
+}
+
+struct RestoreOptions {
+    var fileURL: URL
+    var ignoreOwnership = true
+    var ignorePrivileges = true
+    var cleanBeforeRestore = true
+    var singleTransaction = false
+    var stopOnError = false
+
+    var isPlainSQL: Bool { fileURL.pathExtension.lowercased() == "sql" }
+}
+
 @MainActor
 @Observable
 final class DatabaseProcesses {
@@ -21,39 +40,38 @@ final class DatabaseProcesses {
     private var running: [UUID: Process] = [:]
     var visible = false
 
-    func backup(_ node: TreeNode, connections: ConnectionStore) {
+    func backup(_ node: TreeNode, options: BackupOptions, connections: ConnectionStore) {
         guard let config = connections.connection(id: node.connectionID), let database = node.database else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "\(node.title).dump"
-        panel.allowedContentTypes = [.data, UTType(filenameExtension: "sql") ?? .plainText]
-        panel.allowsOtherFileTypes = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let isPlainSQL = url.pathExtension.lowercased() == "sql"
         var arguments = [
             "--verbose",
-            isPlainSQL ? "--format=plain" : "--format=custom",
-            "--no-owner",
-            "--file", url.path
+            options.isPlainSQL ? "--format=plain" : "--format=custom"
         ]
+        if options.ignoreOwnership { arguments.append("--no-owner") }
+        if options.ignorePrivileges { arguments.append("--no-acl") }
+        arguments += ["--file", options.fileURL.path]
         if let table = node.table { arguments += ["--table", qualified(node.schema, table)] }
         arguments.append(database)
         launch("pg_dump", arguments: arguments, node: node, config: config, connections: connections,
                title: "Backup")
     }
 
-    func restore(_ node: TreeNode, connections: ConnectionStore) {
+    func restore(_ node: TreeNode, options: RestoreOptions, connections: ConnectionStore) {
         guard let config = connections.connection(id: node.connectionID), let database = node.database else { return }
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.data, UTType(filenameExtension: "sql") ?? .plainText]
-        panel.allowsOtherFileTypes = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        if url.pathExtension.lowercased() == "sql" {
-            launch("psql", arguments: ["--dbname", database, "--file", url.path],
+        if options.isPlainSQL {
+            launch("psql", arguments: ["--dbname", database, "--file", options.fileURL.path],
                    node: node, config: config, connections: connections, title: "Restore (SQL)")
-        } else {
-            launch("pg_restore", arguments: ["--verbose", "--clean", "--if-exists", "--no-owner", "--dbname", database, url.path],
-                   node: node, config: config, connections: connections, title: "Restore")
+            return
         }
+
+        var arguments = ["--verbose"]
+        if options.cleanBeforeRestore { arguments += ["--clean", "--if-exists"] }
+        if options.ignoreOwnership { arguments.append("--no-owner") }
+        if options.ignorePrivileges { arguments.append("--no-acl") }
+        if options.singleTransaction { arguments.append("--single-transaction") }
+        if options.stopOnError { arguments.append("--exit-on-error") }
+        arguments += ["--dbname", database, options.fileURL.path]
+        launch("pg_restore", arguments: arguments,
+               node: node, config: config, connections: connections, title: "Restore")
     }
 
     func transferCSV(_ node: TreeNode, connections: ConnectionStore, importing: Bool) {

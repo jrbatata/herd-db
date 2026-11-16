@@ -357,7 +357,7 @@ struct TreeRowView: View {
             Button("Excluir em cascata…", role: .destructive) { workspace.presentDropObject(for: node, force: true) }
                 .keyboardShortcut(.delete, modifiers: [.command, .option])
             Divider()
-            Button("Backup…") { workspace.processes.backup(node, connections: workspace.app.connections) }
+            Button("Backup…") { workspace.presentBackup(for: node) }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
             if node.kind == .table {
                 Menu("Importar/Exportar CSV") {
@@ -401,9 +401,9 @@ struct TreeRowView: View {
             }
             if node.kind == .database {
                 Divider()
-                Button("Backup…") { workspace.processes.backup(node, connections: workspace.app.connections) }
+                Button("Backup…") { workspace.presentBackup(for: node) }
                     .keyboardShortcut("b", modifiers: [.command, .shift])
-                Button("Restore…") { workspace.processes.restore(node, connections: workspace.app.connections) }
+                Button("Restore…") { workspace.presentRestore(for: node) }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
                 Button("Ver processos…") { workspace.openProcesses() }
                     .keyboardShortcut("p", modifiers: [.command, .option])

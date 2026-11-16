@@ -46,6 +46,8 @@ final class WorkspaceState {
     var databaseWizard: DatabaseWizardState?
     var tableStructure: TableStructureState?
     var dropWizard: DropWizardState?
+    var backupWizard: BackupWizardState?
+    var restoreWizard: RestoreWizardState?
     var tableSubObjectWizard: TableSubObjectWizardState?
     var alert: AlertMessage?
     var focusFilterToken = 0
@@ -344,6 +346,30 @@ final class WorkspaceState {
             database: database,
             defaultOwner: config.username,
             reloadNode: target
+        )
+    }
+
+    func presentBackup(for node: TreeNode) {
+        guard node.kind == .database || node.kind == .table,
+              let config = app.connections.connection(id: node.connectionID) else { return }
+        backupWizard = BackupWizardState(
+            node: node,
+            connectionName: config.name,
+            database: node.database ?? config.maintenanceDatabase,
+            target: node.kind == .table
+                ? "\(node.schema ?? "public").\(node.table ?? node.title)"
+                : (node.database ?? config.maintenanceDatabase)
+        )
+    }
+
+    func presentRestore(for node: TreeNode) {
+        guard node.kind == .database,
+              let config = app.connections.connection(id: node.connectionID),
+              let database = node.database else { return }
+        restoreWizard = RestoreWizardState(
+            node: node,
+            connectionName: config.name,
+            database: database
         )
     }
 
