@@ -43,8 +43,12 @@ struct ConnectionSheet: View {
                     field("Tipo") {
                         Picker("Tipo", selection: $config.engine) {
                             ForEach(DatabaseEngine.allCases) { engine in
-                                Text(engine.isAvailable ? engine.displayName : "\(engine.displayName) (em breve)")
-                                    .tag(engine)
+                                Label {
+                                    Text(engine.isAvailable ? engine.displayName : "\(engine.displayName) (em breve)")
+                                } icon: {
+                                    Image(nsImage: engine.iconSymbol.image(solid: false))
+                                }
+                                .tag(engine)
                             }
                         }
                         .labelsHidden()

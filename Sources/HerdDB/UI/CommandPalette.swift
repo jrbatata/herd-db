@@ -3,7 +3,7 @@ import HerdCore
 import Observation
 import SwiftUI
 
-/// Escopo da paleta. `⌘P` busca tudo, `⌘K` só bancos e `⇧⌘K` só conexões.
+/// Escopo da paleta. `⌘P` busca tudo, `⌘K` somente bancos e `⇧⌘K` somente conexões.
 enum CommandPaletteScope: Equatable {
     case all
     case databases
@@ -323,7 +323,7 @@ final class CommandPaletteModel {
                 id: "conn/\(config.id.uuidString)",
                 title: config.name,
                 subtitle: "\(config.engine.displayName) · \(config.host):\(config.port)",
-                icon: .database,
+                icon: config.engine.iconSymbol,
                 shortcut: nil,
                 kind: .connection,
                 action: .selectConnection(config.id),

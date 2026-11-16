@@ -1,4 +1,5 @@
 import AppKit
+import HerdCore
 import SwiftUI
 
 /// Ícones do IconMCP (https://iconmcp.com) embutidos como SVG.
@@ -9,6 +10,7 @@ enum IconSymbol: String, CaseIterable {
     case close
     case warning
     case database
+    case serverStack
     case folder
     case table
     case view
@@ -48,6 +50,7 @@ enum IconSymbol: String, CaseIterable {
         case .close: "close"
         case .warning: "warning-triangle"
         case .database: "database"
+        case .serverStack: "server"
         case .folder: "folder"
         case .table: "table"
         case .view: "rhombus"
@@ -101,6 +104,7 @@ enum IconSymbol: String, CaseIterable {
         case .close: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><g><line x1="3.75" y1="3.75" x2="12.25" y2="12.25"/><line x1="12.25" y1="3.75" x2="3.75" y2="12.25"/></g></svg>"##
         case .warning: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><g><path d="M9.298 3.992 L12.196 8.998 C12.775 9.998 12.054 11.25 10.898 11.25 L5.102 11.25 C3.946 11.25 3.225 9.998 3.804 8.998 L6.702 3.992 C7.28 2.994 8.72 2.994 9.298 3.992 Z"/><path d="M8.643 6.822 L9.568 8.364 C9.868 8.864 9.508 9.5 8.925 9.5 L7.075 9.5 C6.492 9.5 6.132 8.864 6.432 8.364 L7.357 6.822 C7.648 6.336 8.352 6.336 8.643 6.822 Z"/><line x1="4.5" y1="11.25" x2="2.75" y2="14"/><line x1="11.5" y1="11.25" x2="13.25" y2="14"/></g></svg>"##
         case .database: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><g><path d="M2.5 4 C2.5 2.9 5 2 8 2 C11 2 13.5 2.9 13.5 4 V12 C13.5 13.1 11 14 8 14 C5 14 2.5 13.1 2.5 12 Z"/><path d="M2.5 4 C2.5 5.1 5 6 8 6 C11 6 13.5 5.1 13.5 4"/><path d="M2.5 8 C2.5 9.1 5 10 8 10 C11 10 13.5 9.1 13.5 8"/></g></svg>"##
+        case .serverStack: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><g><rect x="2.75" y="2.75" width="10.5" height="4.5" rx="1.5"/><rect x="2.75" y="8.75" width="10.5" height="4.5" rx="1.5"/><circle cx="5.25" cy="5" r="0.7" fill="#000" stroke="none"/><circle cx="5.25" cy="11" r="0.7" fill="#000" stroke="none"/><line x1="7.75" y1="5" x2="11" y2="5"/><line x1="7.75" y1="11" x2="11" y2="11"/></g></svg>"##
         case .folder: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><g><path d="M4.25 3.25 L5.1 3.25 C5.83 3.25 6.523 3.569 6.998 4.123 L7.002 4.127 C7.477 4.681 8.17 5 8.9 5 L11.25 5 C12.631 5 13.75 6.119 13.75 7.5 L13.75 10.25 C13.75 11.631 12.631 12.75 11.25 12.75 L4.75 12.75 C3.369 12.75 2.25 11.631 2.25 10.25 L2.25 5.25 C2.25 4.145 3.145 3.25 4.25 3.25 Z"/></g></svg>"##
         case .table: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><g><rect x="2.25" y="2.75" width="11.5" height="10.5" rx="2.5"/><line x1="2.25" y1="6.25" x2="13.75" y2="6.25"/><line x1="2.25" y1="9.75" x2="13.75" y2="9.75"/><line x1="6.75" y1="2.75" x2="6.75" y2="13.25"/></g></svg>"##
         case .view: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round"><g><path d="M9.171 3.214 L12.25 7.063 C12.689 7.611 12.689 8.389 12.25 8.937 L9.171 12.786 C8.571 13.536 7.429 13.536 6.829 12.786 L3.75 8.937 C3.311 8.389 3.311 7.611 3.75 7.063 L6.829 3.214 C7.429 2.464 8.571 2.464 9.171 3.214 Z"/></g></svg>"##
@@ -124,7 +128,7 @@ enum IconSymbol: String, CaseIterable {
 
     var solidSVG: String {
         switch self {
-        case .cloudCheck, .cloudX, .copy, .trash, .save, .download, .undo, .eye, .eyeOff: outlineSVG
+        case .cloudCheck, .cloudX, .copy, .trash, .save, .download, .undo, .eye, .eyeOff, .serverStack: outlineSVG
         case .alertCircle: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.253" stroke-linecap="round" stroke-linejoin="round"><path fill="#000" fill-rule="evenodd" stroke="none" d="M14 8A6 6 0 1 1 2 8a6 6 0 0 1 12 0ZM8.63 5a.63.63 0 0 0-1.26 0v3.5a.63.63 0 0 0 1.26 0Zm.17 5.9a.8.8 0 1 0-1.6 0 .8.8 0 0 0 1.6 0Z"/></svg>"##
         case .sidebarLeft: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.253" stroke-linecap="round" stroke-linejoin="round"><rect x="2.25" y="2.75" width="11.5" height="10.5" rx="2.5"/><path d="M4.75 2.75H6v10.5H4.75a2.5 2.5 0 0 1-2.5-2.5v-5.5a2.5 2.5 0 0 1 2.5-2.5Z" fill="#000"/></svg>"##
         case .panelBottom: ##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.253" stroke-linecap="round" stroke-linejoin="round"><rect x="2.25" y="2.75" width="11.5" height="10.5" rx="2.5"/><path d="M2.25 9.5h11.5v1.25a2.5 2.5 0 0 1-2.5 2.5h-6.5a2.5 2.5 0 0 1-2.5-2.5Z" fill="#000"/></svg>"##
@@ -184,5 +188,15 @@ struct Icon: View {
             .resizable()
             .scaledToFit()
             .frame(width: size, height: size)
+    }
+}
+
+extension DatabaseEngine {
+    /// Ícone que representa o tipo de conexão em seletores e listas.
+    var iconSymbol: IconSymbol {
+        switch self {
+        case .postgres: .database
+        case .sqlServer: .serverStack
+        }
     }
 }
