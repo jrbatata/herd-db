@@ -18,6 +18,10 @@ public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
     public var detail: String?
     /// UTF-16 offset from the start of `insertText` where the caret should land.
     public var caretOffset: Int?
+    /// Asks the editor to open the completion list again right after inserting
+    /// this item. Used by keywords such as `WHERE`, which open a new position
+    /// where the next useful step is picking a column.
+    public var continuesCompletion: Bool
 
     public var id: String { "\(kind.rawValue)|\(title)|\(insertText)|\(detail ?? "")" }
 
@@ -42,13 +46,15 @@ public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
         title: String,
         insertText: String,
         detail: String? = nil,
-        caretOffset: Int? = nil
+        caretOffset: Int? = nil,
+        continuesCompletion: Bool = false
     ) {
         self.kind = kind
         self.title = title
         self.insertText = insertText
         self.detail = detail
         self.caretOffset = caretOffset
+        self.continuesCompletion = continuesCompletion
     }
 }
 
