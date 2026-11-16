@@ -159,16 +159,18 @@ struct QueryTabView: View {
     }
 
     private var safeModeButton: some View {
-        let mode = app.connections.connection(id: tab.connectionID)?.safeMode ?? .silent
+        let config = app.connections.connection(id: tab.connectionID)
+        let mode = config?.safeMode ?? .silent
         let tint = mode.isRestricted ? mode.tint : Color.secondary
+        let isProduction = config?.isProduction == true
         return Menu {
-            ForEach(SafeMode.allCases) { option in
-                Button {
-                    changeSafeMode(to: option)
-                } label: {
-                    Text(option == mode ? "✓ \(option.displayName)" : option.displayName)
-                }
+            if !isProduction {
+                safeModeOption(.silent, current: mode)
             }
+            safeModeOption(.alert, current: mode)
+            safeModeOption(.alertReadOnly, current: mode)
+            safeModeOption(.secure, current: mode)
+            safeModeOption(.secureReadOnly, current: mode)
         } label: {
             HStack(spacing: 4) {
                 Circle()
@@ -188,9 +190,24 @@ struct QueryTabView: View {
         .help("Proteção: \(mode.summary)")
     }
 
+    private func safeModeOption(_ option: SafeMode, current: SafeMode) -> some View {
+        Button {
+            changeSafeMode(to: option)
+        } label: {
+            Text(option == current ? "✓ \(option.displayName)" : option.displayName)
+        }
+    }
+
     private func changeSafeMode(to mode: SafeMode) {
         guard let config = app.connections.connection(id: tab.connectionID),
               config.safeMode != mode else { return }
+        if config.isProduction, !mode.isRestricted {
+            workspace.alert = AlertMessage(
+                title: "Produção exige proteção",
+                message: "Uma conexão marcada como produção não pode ficar sem proteção. Escolha um modo com confirmação ou senha."
+            )
+            return
+        }
         if config.safeMode.requiresPassword,
            !SafeModeGate.confirmPassword(config: config, connections: app.connections,
                                          action: "alterar a proteção") {

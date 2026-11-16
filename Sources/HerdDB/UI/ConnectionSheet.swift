@@ -25,7 +25,12 @@ struct ConnectionSheet: View {
     init(editor: ConnectionEditorState, workspace: WorkspaceState) {
         self.editor = editor
         self.workspace = workspace
-        _config = State(initialValue: editor.config)
+        var initial = editor.config
+        // Conexões antigas podem ter ficado sem proteção com produção marcada.
+        if initial.isProduction, !initial.safeMode.isRestricted {
+            initial.safeMode = .secure
+        }
+        _config = State(initialValue: initial)
         _password = State(initialValue: editor.password)
     }
 
@@ -109,8 +114,10 @@ struct ConnectionSheet: View {
                     Divider()
                     field("Proteção") {
                         Picker("Proteção", selection: $config.safeMode) {
-                            Text(SafeMode.silent.displayName)
-                                .tag(SafeMode.silent)
+                            if !config.isProduction {
+                                Text(SafeMode.silent.displayName)
+                                    .tag(SafeMode.silent)
+                            }
                             Text(SafeMode.alert.displayName)
                                 .tag(SafeMode.alert)
                             Text(SafeMode.alertReadOnly.displayName)
@@ -135,10 +142,21 @@ struct ConnectionSheet: View {
                     }
                 }
 
-                Text(config.safeMode.summary)
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 4)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(config.safeMode.summary)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                    if config.isProduction {
+                        Label {
+                            Text("Conexões de produção não podem ficar sem proteção.")
+                        } icon: {
+                            Icon(.info, size: 12)
+                        }
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.leading, 4)
 
                 if !config.engine.isAvailable {
                     Label { Text("O driver de SQL Server chega na fase 6. Por enquanto só PostgreSQL conecta.") } icon: { Icon(.info, size: 14) }
@@ -165,6 +183,12 @@ struct ConnectionSheet: View {
         .onChange(of: config.engine) { oldEngine, newEngine in
             if config.port == oldEngine.defaultPort || config.port == 0 {
                 config.port = newEngine.defaultPort
+            }
+        }
+        .onChange(of: config.isProduction) { _, isProduction in
+            // Produção nunca começa sem proteção: assume o modo mais forte e deixa o usuário ajustar.
+            if isProduction, !config.safeMode.isRestricted {
+                config.safeMode = .secure
             }
         }
     }
@@ -277,6 +301,9 @@ struct ConnectionSheet: View {
 
     private func save() {
         saveError = nil
+        if config.isProduction, !config.safeMode.isRestricted {
+            config.safeMode = .secure
+        }
         do {
             try app.save(config, password: password)
             workspace.tree.syncConnections()
