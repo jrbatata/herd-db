@@ -332,9 +332,7 @@ final class SQLTextView: NSTextView {
            !modifiers.contains(.option),
            !modifiers.contains(.control),
            !hasMarkedText(),
-           let typed = event.characters,
-           typed == "'" || typed == "\"",
-           let quote = typed.first {
+           let quote = quoteCharacter(for: event, modifiers: modifiers) {
             handleQuoteKey(quote)
             return
         }
@@ -366,6 +364,27 @@ final class SQLTextView: NSTextView {
             }
         }
         super.keyDown(with: event)
+    }
+
+    /// Some keyboard layouts (including Brazilian Pro) expose the quote key as a
+    /// dead key, so AppKit reports an empty `characters` value. SQL needs the
+    /// literal ASCII quote immediately instead of waiting for text composition.
+    /// Inside strings and comments the dead key is preserved so accented text
+    /// (`é`, `á`, `ü`…) can still be typed.
+    private func quoteCharacter(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags
+    ) -> Character? {
+        if let typed = event.characters,
+           typed == "'" || typed == "\"" {
+            return typed.first
+        }
+
+        guard event.keyCode == 39,
+              event.characters?.isEmpty != false,
+              !isInsideLiteralOrComment(at: selectedRange().location)
+        else { return nil }
+        return modifiers.contains(.shift) ? "\"" : "'"
     }
 
     /// Inserts `'` or `"` as a pair, steps over an existing closing quote,
@@ -412,29 +431,7 @@ final class SQLTextView: NSTextView {
     /// True when the caret is inside an open string, quoted identifier or comment,
     /// where adding a closing quote would be wrong.
     private func isInsideLiteralOrComment(at location: Int) -> Bool {
-        let ns = string as NSString
-        guard ns.length > 0 else { return false }
-
-        for token in SQLTokenizer.tokens(in: string) {
-            let range = token.range
-            let end = NSMaxRange(range)
-            let strictlyInside = location > range.location && location < end
-            let atEnd = location == end && location > range.location
-
-            switch token.kind {
-            case .comment:
-                if strictlyInside || atEnd { return true }
-            case .string:
-                if strictlyInside { return true }
-                if atEnd, ns.character(at: end - 1) != 0x27 { return true }
-            case .quotedIdentifier:
-                if strictlyInside { return true }
-                if atEnd, ns.character(at: end - 1) != 0x22 { return true }
-            case .keyword, .number, .parameter:
-                continue
-            }
-        }
-        return false
+        SQLTokenizer.isInsideLiteralOrComment(string, at: location)
     }
 
     private func isWordUnit(_ unit: UInt16) -> Bool {

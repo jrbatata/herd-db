@@ -199,6 +199,36 @@ public enum SQLTokenizer {
         return tokens
     }
 
+    /// True when `location` sits inside an open string, quoted identifier or
+    /// comment, where auto-closing a quote would be wrong. A literal that ends
+    /// exactly at `location` counts as closed, so the caret just after `'abc'`
+    /// is outside.
+    public static func isInsideLiteralOrComment(_ sql: String, at location: Int) -> Bool {
+        let ns = sql as NSString
+        guard ns.length > 0 else { return false }
+
+        for token in tokens(in: sql) {
+            let range = token.range
+            let end = NSMaxRange(range)
+            let strictlyInside = location > range.location && location < end
+            let atEnd = location == end && location > range.location
+
+            switch token.kind {
+            case .comment:
+                if strictlyInside || atEnd { return true }
+            case .string:
+                if strictlyInside { return true }
+                if atEnd, ns.character(at: end - 1) != 0x27 { return true }
+            case .quotedIdentifier:
+                if strictlyInside { return true }
+                if atEnd, ns.character(at: end - 1) != 0x22 { return true }
+            case .keyword, .number, .parameter:
+                continue
+            }
+        }
+        return false
+    }
+
     // MARK: - Keywords
 
     public static let keywords: Set<String> = [

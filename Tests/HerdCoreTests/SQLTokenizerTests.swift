@@ -82,4 +82,38 @@ final class SQLTokenizerTests: XCTestCase {
     func testDoesNotTokenizeOperatorsOrIdentifiers() {
         XCTAssertTrue(SQLTokenizer.tokens(in: "a + b = c").isEmpty)
     }
+
+    // MARK: - Caret inside literal or comment
+
+    func testLocationInsideOpenString() {
+        let open = "SELECT 'caf"
+        XCTAssertTrue(SQLTokenizer.isInsideLiteralOrComment(open, at: (open as NSString).length))
+
+        let closed = "SELECT 'cafe'"
+        XCTAssertFalse(SQLTokenizer.isInsideLiteralOrComment(closed, at: (closed as NSString).length))
+        XCTAssertTrue(SQLTokenizer.isInsideLiteralOrComment(closed, at: (closed as NSString).length - 1))
+    }
+
+    func testLocationInsideQuotedIdentifier() {
+        let open = "SELECT \"Nome"
+        XCTAssertTrue(SQLTokenizer.isInsideLiteralOrComment(open, at: (open as NSString).length))
+
+        let closed = "SELECT \"Nome\""
+        XCTAssertFalse(SQLTokenizer.isInsideLiteralOrComment(closed, at: (closed as NSString).length))
+        XCTAssertTrue(SQLTokenizer.isInsideLiteralOrComment(closed, at: 9))
+    }
+
+    func testLocationInsideComment() {
+        let line = "SELECT 1 -- nota"
+        XCTAssertTrue(SQLTokenizer.isInsideLiteralOrComment(line, at: (line as NSString).length))
+
+        let block = "SELECT /* nota"
+        XCTAssertTrue(SQLTokenizer.isInsideLiteralOrComment(block, at: (block as NSString).length))
+    }
+
+    func testLocationInCodeIsNotInsideLiteral() {
+        let sql = "SELECT name FROM users"
+        XCTAssertFalse(SQLTokenizer.isInsideLiteralOrComment(sql, at: (sql as NSString).length))
+        XCTAssertFalse(SQLTokenizer.isInsideLiteralOrComment("", at: 0))
+    }
 }
