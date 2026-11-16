@@ -327,9 +327,19 @@ final class SQLTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if let completionController {
-            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if !modifiers.contains(.command),
+           !modifiers.contains(.option),
+           !modifiers.contains(.control),
+           !hasMarkedText(),
+           let typed = event.characters,
+           typed == "'" || typed == "\"",
+           let quote = typed.first {
+            handleQuoteKey(quote)
+            return
+        }
 
+        if let completionController {
             if event.keyCode == 49, modifiers.contains(.control) || modifiers.contains(.option) {
                 completionController.requestCompletions(explicit: true)
                 return
@@ -346,7 +356,6 @@ final class SQLTextView: NSTextView {
             }
         }
         if event.keyCode == 48 {
-            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if modifiers.contains(.shift) {
                 unindentSQL()
                 return
@@ -357,6 +366,84 @@ final class SQLTextView: NSTextView {
             }
         }
         super.keyDown(with: event)
+    }
+
+    /// Inserts `'` or `"` as a pair, steps over an existing closing quote,
+    /// wraps a selection and leaves the caret between the new quotes.
+    private func handleQuoteKey(_ quote: Character) {
+        let ns = string as NSString
+        let selection = selectedRange()
+        let location = min(max(selection.location, 0), ns.length)
+        let unit = quote.utf16.first ?? 0
+
+        if selection.length > 0 {
+            let selected = ns.substring(with: selection)
+            insertText("\(quote)\(selected)\(quote)", replacementRange: selection)
+            setSelectedRange(NSRange(location: selection.location + 1, length: (selected as NSString).length))
+            scrollRangeToVisible(selectedRange())
+            return
+        }
+
+        // A closing quote already sits at the caret: step over it.
+        if location < ns.length, ns.character(at: location) == unit {
+            setSelectedRange(NSRange(location: location + 1, length: 0))
+            return
+        }
+
+        let emptyRange = NSRange(location: location, length: 0)
+
+        // Inside a string or comment a quote is plain text.
+        if isInsideLiteralOrComment(at: location) {
+            insertText(String(quote), replacementRange: emptyRange)
+            return
+        }
+
+        // Never pair in the middle of a word.
+        if location < ns.length, isWordUnit(ns.character(at: location)) {
+            insertText(String(quote), replacementRange: emptyRange)
+            return
+        }
+
+        insertText("\(quote)\(quote)", replacementRange: emptyRange)
+        setSelectedRange(NSRange(location: location + 1, length: 0))
+        scrollRangeToVisible(selectedRange())
+    }
+
+    /// True when the caret is inside an open string, quoted identifier or comment,
+    /// where adding a closing quote would be wrong.
+    private func isInsideLiteralOrComment(at location: Int) -> Bool {
+        let ns = string as NSString
+        guard ns.length > 0 else { return false }
+
+        for token in SQLTokenizer.tokens(in: string) {
+            let range = token.range
+            let end = NSMaxRange(range)
+            let strictlyInside = location > range.location && location < end
+            let atEnd = location == end && location > range.location
+
+            switch token.kind {
+            case .comment:
+                if strictlyInside || atEnd { return true }
+            case .string:
+                if strictlyInside { return true }
+                if atEnd, ns.character(at: end - 1) != 0x27 { return true }
+            case .quotedIdentifier:
+                if strictlyInside { return true }
+                if atEnd, ns.character(at: end - 1) != 0x22 { return true }
+            case .keyword, .number, .parameter:
+                continue
+            }
+        }
+        return false
+    }
+
+    private func isWordUnit(_ unit: UInt16) -> Bool {
+        (0x30...0x39).contains(unit)
+            || (0x41...0x5A).contains(unit)
+            || (0x61...0x7A).contains(unit)
+            || unit == 0x5F
+            || unit == 0x24
+            || unit >= 0x80
     }
 
     /// Tab insere quatro espaços, como o resto das ferramentas SQL.
