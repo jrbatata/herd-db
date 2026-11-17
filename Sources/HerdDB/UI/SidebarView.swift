@@ -411,14 +411,16 @@ struct TreeRowView: View {
                 }
                 .keyboardShortcut(.delete, modifiers: [.command, .option])
             }
-            if isPostgres, node.kind == .database {
+            if node.kind == .database {
                 Divider()
                 Button("Backup…") { workspace.presentBackup(for: node) }
                     .keyboardShortcut("b", modifiers: [.command, .shift])
                 Button("Restore…") { workspace.presentRestore(for: node) }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
-                Button("Ver processos…") { workspace.openProcesses() }
-                    .keyboardShortcut("p", modifiers: [.command, .option])
+                if isPostgres {
+                    Button("Ver processos…") { workspace.openProcesses() }
+                        .keyboardShortcut("p", modifiers: [.command, .option])
+                }
             }
             Divider()
             Button("Copiar nome") { copy(node.title) }

@@ -2,6 +2,46 @@ import CosmoMSSQL
 import CosmoSQLCore
 import Foundation
 
+public struct SQLServerBackupOptions: Sendable {
+    public var compression: Bool
+    public var checksum: Bool
+    public var copyOnly: Bool
+
+    public init(compression: Bool = true, checksum: Bool = true, copyOnly: Bool = false) {
+        self.compression = compression
+        self.checksum = checksum
+        self.copyOnly = copyOnly
+    }
+}
+
+public struct SQLServerBackupFile: Identifiable, Hashable, Sendable {
+    public var logicalName: String
+    public var physicalName: String
+    /// "D" for data, "L" for log.
+    public var type: String
+    public var sizeBytes: Int64?
+
+    public var id: String { logicalName }
+    public var isLog: Bool { type.uppercased() == "L" }
+
+    public init(logicalName: String, physicalName: String, type: String, sizeBytes: Int64? = nil) {
+        self.logicalName = logicalName
+        self.physicalName = physicalName
+        self.type = type
+        self.sizeBytes = sizeBytes
+    }
+}
+
+public struct SQLServerRestoreMove: Hashable, Sendable {
+    public var logicalName: String
+    public var physicalName: String
+
+    public init(logicalName: String, physicalName: String) {
+        self.logicalName = logicalName
+        self.physicalName = physicalName
+    }
+}
+
 /// SQL Server driver backed by CosmoMSSQL (TDS 7.4 in pure Swift).
 /// One pool per database, created lazily as the user browses the tree.
 public actor SQLServerDriver: DatabaseDriver {
@@ -31,20 +71,22 @@ public actor SQLServerDriver: DatabaseDriver {
     private func pool(for database: String?) -> MSSQLConnectionPool {
         let name = normalizedDatabase(database)
         if let existing = pools[name] { return existing }
+        let pool = MSSQLConnectionPool(configuration: connectionConfiguration(database: name), maxConnections: 1)
+        pools[name] = pool
+        return pool
+    }
 
-        let configuration = MSSQLConnection.Configuration(
+    private func connectionConfiguration(database: String) -> MSSQLConnection.Configuration {
+        MSSQLConnection.Configuration(
             host: config.host,
             port: config.port,
-            database: name,
+            database: database,
             username: config.username,
             password: password ?? "",
             tls: config.useTLS ? .require : .prefer,
             trustServerCertificate: config.trustServerCertificate,
             connectTimeout: 20
         )
-        let pool = MSSQLConnectionPool(configuration: configuration, maxConnections: 1)
-        pools[name] = pool
-        return pool
     }
 
     /// Runs one batch and returns every result set. Closing the connection on
@@ -379,6 +421,300 @@ public actor SQLServerDriver: DatabaseDriver {
         }
     }
 
+    // MARK: - Backup and restore
+
+    /// Caminho sugerido para o `.bak`, usando o diretório padrão do servidor.
+    public func suggestedBackupPath(for database: String) async throws -> String {
+        let sql = """
+            SELECT COALESCE(
+                CONVERT(nvarchar(4000), SERVERPROPERTY('InstanceDefaultBackupPath')),
+                CONVERT(nvarchar(4000), SERVERPROPERTY('InstanceDefaultDataPath')),
+                N''
+            ) AS path;
+            """
+        let rows = try await queryRows(sql, database: config.maintenanceDatabase)
+        var base = rows.first?.values.first?.asString() ?? ""
+        guard !base.isEmpty else { return "" }
+
+        let separator = base.contains("\\") ? "\\" : "/"
+        if !base.hasSuffix("/") && !base.hasSuffix("\\") {
+            base += separator
+        }
+        let safeName = database.map { character in
+            "/\\:*?\"<>|".contains(character) ? "_" : String(character)
+        }.joined()
+        return "\(base)\(safeName)_\(Self.backupTimestamp.string(from: Date())).bak"
+    }
+
+    public func backupDatabase(
+        _ database: String,
+        to path: String,
+        options: SQLServerBackupOptions = SQLServerBackupOptions(),
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw HerdError.queryFailed("Informe o caminho do arquivo de backup no servidor.")
+        }
+
+        var clauses = ["INIT", "STATS = 10"]
+        if options.compression { clauses.append("COMPRESSION") }
+        if options.checksum { clauses.append("CHECKSUM") }
+        if options.copyOnly { clauses.append("COPY_ONLY") }
+
+        let sql = """
+            BACKUP DATABASE \(dialect.quote(database))
+            TO DISK = \(Self.literal(trimmed))
+            WITH \(clauses.joined(separator: ", "));
+            """
+        try await runServerOperation(sql, progress: progress)
+    }
+
+    /// Lê os arquivos lógicos e físicos de um `.bak` antes do restore.
+    ///
+    /// O `RESTORE FILELISTONLY` devolve colunas `nchar`, que o driver TDS ainda
+    /// não decodifica. Capturamos o resultado numa tabela temporária e
+    /// selecionamos apenas as colunas necessárias, já em `nvarchar`.
+    public func backupFileList(_ path: String) async throws -> [SQLServerBackupFile] {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw HerdError.queryFailed("Informe o caminho do arquivo de backup no servidor.")
+        }
+
+        let restore = "RESTORE FILELISTONLY FROM DISK = \(Self.literal(trimmed))"
+        let sql = """
+            CREATE TABLE #herd_filelist (
+                LogicalName nvarchar(128) NULL,
+                PhysicalName nvarchar(260) NULL,
+                [Type] nvarchar(1) NULL,
+                FileGroupName nvarchar(128) NULL,
+                Size numeric(20,0) NULL,
+                MaxSize numeric(20,0) NULL,
+                FileId numeric(20,0) NULL,
+                CreateLSN numeric(25,0) NULL,
+                DropLSN numeric(25,0) NULL,
+                UniqueId uniqueidentifier NULL,
+                ReadOnlyLSN numeric(25,0) NULL,
+                ReadWriteLSN numeric(25,0) NULL,
+                BackupSizeInBytes bigint NULL,
+                SourceBlockSize int NULL,
+                FileGroupId int NULL,
+                LogGroupGUID uniqueidentifier NULL,
+                DifferentialBaseLSN numeric(25,0) NULL,
+                DifferentialBaseGUID uniqueidentifier NULL,
+                IsReadOnly bit NULL,
+                IsPresent bit NULL,
+                TDEThumbprint varbinary(32) NULL,
+                SnapshotUrl nvarchar(4000) NULL
+            );
+            INSERT INTO #herd_filelist EXEC(\(Self.literal(restore)));
+            SELECT LogicalName, PhysicalName, [Type], Size FROM #herd_filelist;
+            DROP TABLE #herd_filelist;
+            """
+        let sets = try await fetch(sql, database: config.maintenanceDatabase)
+        guard let set = sets.first else { return [] }
+
+        let names = set.columns.map { $0.name.lowercased() }
+        func index(_ name: String) -> Int? { names.firstIndex(of: name) }
+        guard let logicalIndex = index("logicalname"),
+              let physicalIndex = index("physicalname"),
+              let typeIndex = index("type") else {
+            throw HerdError.queryFailed("O arquivo não parece ser um backup válido do SQL Server.")
+        }
+        let sizeIndex = index("size")
+
+        return set.rows.compactMap { row in
+            guard row.values.indices.contains(logicalIndex),
+                  row.values.indices.contains(physicalIndex),
+                  row.values.indices.contains(typeIndex),
+                  let logical = row.values[logicalIndex].asString(),
+                  let physical = row.values[physicalIndex].asString(),
+                  let type = row.values[typeIndex].asString() else { return nil }
+            let size = sizeIndex.flatMap { idx in
+                row.values.indices.contains(idx) ? SQLServerCellFormatter.int(row.values[idx]) : nil
+            }
+            return SQLServerBackupFile(
+                logicalName: logical,
+                physicalName: physical,
+                type: type,
+                sizeBytes: size
+            )
+        }
+    }
+
+    public func databaseExists(_ name: String) async throws -> Bool {
+        let rows = try await queryRows(
+            "SELECT database_id FROM sys.databases WHERE name = ?;",
+            database: config.maintenanceDatabase,
+            binds: [.string(name)]
+        )
+        return !rows.isEmpty
+    }
+
+    public func restoreDatabase(
+        _ database: String,
+        from path: String,
+        moves: [SQLServerRestoreMove],
+        replace: Bool = false,
+        closeExisting: Bool = true,
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws {
+        let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else {
+            throw HerdError.queryFailed("Informe o caminho do arquivo de backup no servidor.")
+        }
+        let target = database.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !target.isEmpty else {
+            throw HerdError.queryFailed("Informe o nome do banco de destino.")
+        }
+
+        var clauses: [String] = []
+        if replace { clauses.append("REPLACE") }
+        clauses.append("STATS = 10")
+        clauses.append(contentsOf: moves.map {
+            "MOVE \(Self.literal($0.logicalName)) TO \(Self.literal($0.physicalName))"
+        })
+        let sql = """
+            RESTORE DATABASE \(dialect.quote(target))
+            FROM DISK = \(Self.literal(trimmedPath))
+            WITH \(clauses.joined(separator: ", "));
+            """
+
+        let exists = try await databaseExists(target)
+        let singleUser = exists && closeExisting
+        if exists, let existing = pools.removeValue(forKey: target) {
+            await existing.closeAll()
+        }
+        if singleUser {
+            _ = try? await queryRows(
+                "ALTER DATABASE \(dialect.quote(target)) SET SINGLE_USER WITH ROLLBACK IMMEDIATE;",
+                database: config.maintenanceDatabase
+            )
+        }
+
+        do {
+            try await runServerOperation(sql, progress: progress)
+        } catch {
+            if singleUser {
+                _ = try? await queryRows(
+                    "ALTER DATABASE \(dialect.quote(target)) SET MULTI_USER;",
+                    database: config.maintenanceDatabase
+                )
+            }
+            throw error
+        }
+
+        if singleUser {
+            _ = try? await queryRows(
+                "ALTER DATABASE \(dialect.quote(target)) SET MULTI_USER;",
+                database: config.maintenanceDatabase
+            )
+        }
+    }
+
+    /// Executa BACKUP/RESTORE numa conexão dedicada e acompanha o progresso
+    /// consultando `sys.dm_exec_requests` por outra conexão.
+    private func runServerOperation(
+        _ sql: String,
+        progress: (@Sendable (Double) -> Void)?
+    ) async throws {
+        let configuration = connectionConfiguration(database: config.maintenanceDatabase)
+        let connection: MSSQLConnection
+        do {
+            connection = try await MSSQLConnection.connect(configuration: configuration)
+        } catch {
+            throw HerdError.connectionFailed(Self.describe(error))
+        }
+        defer { Task { try? await connection.close() } }
+
+        var monitor: Task<Void, Never>?
+        if let progress, let spid = try? await Self.sessionID(on: connection) {
+            monitor = Task {
+                await Self.monitorProgress(
+                    spid: spid,
+                    configuration: configuration,
+                    progress: progress
+                )
+            }
+        }
+        defer { monitor?.cancel() }
+
+        do {
+            _ = try await withTaskCancellationHandler {
+                try await connection.queryMulti(sql)
+            } onCancel: {
+                Task { try? await connection.close() }
+            }
+            progress?(100)
+        } catch {
+            if Task.isCancelled || error is CancellationError {
+                throw CancellationError()
+            }
+            throw HerdError.queryFailed(Self.describe(error))
+        }
+    }
+
+    private static func sessionID(on connection: MSSQLConnection) async throws -> Int? {
+        let rows = try await connection.query("SELECT @@SPID AS spid;")
+        return intValue(rows.first?.values.first)
+    }
+
+    private static func monitorProgress(
+        spid: Int,
+        configuration: MSSQLConnection.Configuration,
+        progress: @Sendable (Double) -> Void
+    ) async {
+        guard let monitor = try? await MSSQLConnection.connect(configuration: configuration) else { return }
+        defer { Task { try? await monitor.close() } }
+
+        while !Task.isCancelled {
+            if let rows = try? await monitor.query(
+                "SELECT percent_complete FROM sys.dm_exec_requests WHERE session_id = \(spid);"
+            ), let value = doubleValue(rows.first?.values.first) {
+                progress(min(max(value, 0), 100))
+            }
+            try? await Task.sleep(for: .milliseconds(800))
+        }
+    }
+
+    private static func literal(_ value: String) -> String {
+        "N'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+    }
+
+    private static func intValue(_ value: SQLValue?) -> Int? {
+        guard let value else { return nil }
+        switch value {
+        case .int(let v): return v
+        case .int8(let v): return Int(v)
+        case .int16(let v): return Int(v)
+        case .int32(let v): return Int(v)
+        case .int64(let v): return Int(exactly: v)
+        case .decimal(let v): return NSDecimalNumber(decimal: v).intValue
+        default: return nil
+        }
+    }
+
+    private static func doubleValue(_ value: SQLValue?) -> Double? {
+        guard let value else { return nil }
+        switch value {
+        case .double(let v): return v
+        case .float(let v): return Double(v)
+        case .int(let v): return Double(v)
+        case .int8(let v): return Double(v)
+        case .int16(let v): return Double(v)
+        case .int32(let v): return Double(v)
+        case .int64(let v): return Double(v)
+        case .decimal(let v): return NSDecimalNumber(decimal: v).doubleValue
+        default: return nil
+        }
+    }
+
+    private static var backupTimestamp: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        return formatter
+    }
+
     // MARK: - Helpers
 
     private static let typeExpression = """
@@ -535,6 +871,18 @@ enum SQLServerCellFormatter {
         case .int16(let value): return value != 0
         case .int32(let value): return value != 0
         case .int64(let value): return value != 0
+        default: return nil
+        }
+    }
+
+    static func int(_ value: SQLValue) -> Int64? {
+        switch value {
+        case .int(let v): return Int64(v)
+        case .int8(let v): return Int64(v)
+        case .int16(let v): return Int64(v)
+        case .int32(let v): return Int64(v)
+        case .int64(let v): return v
+        case .decimal(let v): return NSDecimalNumber(decimal: v).int64Value
         default: return nil
         }
     }

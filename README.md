@@ -41,7 +41,7 @@ Cadastre servidores locais ou remotos em segundos, teste a conexão antes de sal
 
 ## Roadmap
 
-**Estado:** fases 1, 2, 3, 4, 5 e 7 concluídas; fase 6 com consultas e catálogo do SQL Server entregues (DDL e backup pendentes); fase 8 em polimento final; fase 9 em desenvolvimento, com Safe Mode concluído e Abrir Qualquer Coisa ainda em construção; fase 10 (diagrama ER) futura.
+**Estado:** fases 1, 2, 3, 4, 5 e 7 concluídas; fase 6 com consultas, catálogo e backup/restore do SQL Server entregues (DDL pendente); fase 8 em polimento final; fase 9 em desenvolvimento, com Safe Mode concluído e Abrir Qualquer Coisa ainda em construção; fase 10 (diagrama ER) futura.
 
 | Fase | Escopo                                             | Status             |
 | ---- | -------------------------------------------------- | ------------------ |
@@ -50,7 +50,7 @@ Cadastre servidores locais ou remotos em segundos, teste a conexão antes de sal
 | 3    | Autocomplete, snippets e scripts SQL               | ✅ Concluída       |
 | 4    | Grid de dados, ações do editor SQL e menus nativos | ✅ Concluída       |
 | 5    | Structure/DDL                                      | ✅ Concluída       |
-| 6    | SQL Server (TDS em Swift)                          | ✅ Consultas e catálogo |
+| 6    | SQL Server (TDS em Swift)                          | ✅ Consultas, catálogo e backup |
 | 7    | Backup/restore, novo banco e geração de scripts    | ✅ Concluída       |
 | 8    | Polimento, acessibilidade e empacotamento          | 🚧 Polimento final |
 | 9    | Safe Mode, ⌘P, console de log, processos, filtros e I/O | 🚧 Em desenvolvimento |
@@ -92,7 +92,7 @@ Structure/DDL reúne colunas, índices e constraints, gera o `CREATE TABLE` comp
 
 ### 6. SQL Server — consultas e catálogo
 
-O SQL Server conecta pelo protocolo TDS 7.4 em Swift puro (CosmoMSSQL), sem FreeTDS nem ODBC instalado. Login SQL, TLS opcional e certificados autoassinados são configuráveis no formulário de conexão. Navegação por bancos, schemas, tabelas, views e rotinas, execução de scripts, resultados e autocomplete funcionam como no PostgreSQL; DDL, backup e processos seguem específicos do PostgreSQL e ficam ocultos nas conexões SQL Server. Autenticação Windows/NTLM e Entra ID ainda não são suportadas.
+O SQL Server conecta pelo protocolo TDS 7.4 em Swift puro (CosmoMSSQL), sem FreeTDS nem ODBC instalado. Login SQL, TLS opcional e certificados autoassinados são configuráveis no formulário de conexão. Navegação por bancos, schemas, tabelas, views e rotinas, execução de scripts, resultados e autocomplete funcionam como no PostgreSQL. Backup e restore usam `BACKUP DATABASE`/`RESTORE DATABASE` com caminho no servidor e progresso; DDL e processos seguem específicos do PostgreSQL. Autenticação Windows/NTLM e Entra ID ainda não são suportadas — o formulário avisa e o erro de login explica o motivo.
 
 ### 7. Operações de banco sem sair do Herd
 
@@ -196,20 +196,22 @@ O diagrama entidade-relacionamento será construído sobre as PKs e FKs que o He
 - [x] Alterações via preview e execução de `ALTER TABLE` + wizards nativos (`CreateTableSheet`, `CreateSchemaSheet`, `CreateTableSubObjectSheet`, `DropObjectSheet`)
 - [x] Atalho `⌘I`
 
-### Fase 6 — SQL Server ✅ (consultas e catálogo)
+### Fase 6 — SQL Server ✅ (consultas, catálogo e backup)
 
 - [x] TDS 7.4 em Swift puro via CosmoMSSQL (sem FreeTDS/ODBC)
 - [x] `SQLServerDriver` async com pool por banco e cancelamento
 - [x] Dialeto `[x]`/`TOP` e catálogos do SQL Server
 - [x] Paridade: árvore, abas, execução, resultados, autocomplete e histórico
+- [x] Backup/restore nativo via `BACKUP DATABASE`/`RESTORE DATABASE`, com `FILELISTONLY`, `MOVE`, `REPLACE` e progresso
 - [x] Testes de integração contra SQL Server em Docker
+- [x] Aviso direto no formulário sobre login SQL x autenticação do Windows
 - [ ] Autenticação Windows/NTLM e Microsoft Entra ID
-- [ ] Wizards de DDL, backup e restore específicos do SQL Server
+- [ ] Wizards de DDL específicos do SQL Server
 
 ### Fase 7 — Backup, restore, novo banco e scripts ✅
 
 - [x] Backup/restore PostgreSQL com `pg_dump`/`pg_restore`/`psql` (`.dump` e `.sql`), progresso e log na aba **Processos**
-- [ ] Backup/restore SQL Server via `BACKUP DATABASE`/`RESTORE DATABASE` (pendente)
+- [x] Backup/restore SQL Server via `BACKUP DATABASE`/`RESTORE DATABASE` (arquivo no servidor)
 - [x] Novo banco pela interface (`CreateDatabaseSheet` / `⌥⌘D`)
 - [x] Gerar script CREATE/INSERT/UPDATE/DELETE/SELECT pelo menu da tabela
 - [x] Copiar nome do objeto (`⌥⌘C`) e atualizar nó (`⌘R`)

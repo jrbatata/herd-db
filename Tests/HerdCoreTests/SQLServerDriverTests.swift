@@ -207,6 +207,74 @@ final class SQLServerDriverTests: XCTestCase {
         XCTAssertEqual(after.rows, [["42"]])
     }
 
+    func testNativeBackupAndRestore() async throws {
+        let driver = try makeDriver()
+        addTeardownBlock { await driver.shutdown() }
+
+        let suffix = UUID().uuidString.prefix(8).lowercased()
+        let source = "herd_bkp_src_\(suffix)"
+        let restored = "herd_bkp_dst_\(suffix)"
+        let backupPath = "/var/opt/mssql/data/\(source).bak"
+        addTeardownBlock {
+            await driver.shutdown()
+            _ = try? await driver.run(
+                "ALTER DATABASE [\(restored)] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [\(restored)];",
+                database: "master"
+            )
+            _ = try? await driver.run(
+                "ALTER DATABASE [\(source)] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [\(source)];",
+                database: "master"
+            )
+        }
+
+        _ = try await driver.run("CREATE DATABASE [\(source)];", database: "master")
+        _ = try await driver.run(
+            "CREATE TABLE [dbo].[items] (id int PRIMARY KEY, name nvarchar(50) NOT NULL);",
+            database: source
+        )
+        _ = try await driver.run(
+            "INSERT INTO [dbo].[items] VALUES (1, N'primeiro');",
+            database: source
+        )
+
+        let suggested = try await driver.suggestedBackupPath(for: source)
+        XCTAssertTrue(suggested.hasSuffix(".bak"), suggested)
+
+        try await driver.backupDatabase(
+            source,
+            to: backupPath,
+            options: SQLServerBackupOptions(compression: true, checksum: true, copyOnly: true)
+        )
+
+        let files = try await driver.backupFileList(backupPath)
+        XCTAssertEqual(files.filter { !$0.isLog }.count, 1)
+        XCTAssertEqual(files.filter(\.isLog).count, 1)
+
+        let existsBefore = try await driver.databaseExists(restored)
+        XCTAssertFalse(existsBefore)
+        let moves = files.map { file in
+            SQLServerRestoreMove(
+                logicalName: file.logicalName,
+                physicalName: "/var/opt/mssql/data/\(restored)\(file.isLog ? "_log" : "").\(file.isLog ? "ldf" : "mdf")"
+            )
+        }
+        try await driver.restoreDatabase(
+            restored,
+            from: backupPath,
+            moves: moves,
+            replace: false,
+            closeExisting: false
+        )
+        let existsAfter = try await driver.databaseExists(restored)
+        XCTAssertTrue(existsAfter)
+
+        let rows = try await driver.run(
+            "SELECT name FROM [\(restored)].[dbo].[items];",
+            database: "master"
+        )
+        XCTAssertEqual(rows.rows, [["primeiro"]])
+    }
+
     // MARK: - Helpers
 
     private func makeDriver() throws -> SQLServerDriver {

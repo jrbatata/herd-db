@@ -273,9 +273,7 @@ final class CommandPaletteModel {
     }
 
     private func actionItems(workspace: WorkspaceState) -> [PaletteItem] {
-        let isPostgres = workspace.activeTab
-            .flatMap { workspace.app.connections.connection(id: $0.connectionID)?.engine } == .postgres
-        var items: [PaletteItem] = [
+        [
             action("new-query", "Nova consulta", "Abrir um script em branco", .newQuery, "⌘T", .action,
                    .newQueryTab),
             action("open-databases", "Abrir banco…", "Ir para um banco de dados", .database, "⌘K", .action,
@@ -284,14 +282,8 @@ final class CommandPaletteModel {
                    .openConnections),
             action("new-connection", "Nova conexão…", "Cadastrar um servidor", .newConnection, "⇧⌘N", .action,
                    .newConnection),
-        ]
-        if isPostgres {
-            items.append(contentsOf: [
-                action("backup", "Backup…", "Exportar banco ou tabela", .download, "⇧⌘B", .action, .backup),
-                action("restore", "Restore…", "Restaurar um dump no banco", .download, "⇧⌘R", .action, .restore),
-            ])
-        }
-        items.append(contentsOf: [
+            action("backup", "Backup…", "Exportar banco ou tabela", .download, "⇧⌘B", .action, .backup),
+            action("restore", "Restore…", "Restaurar um dump no banco", .download, "⇧⌘R", .action, .restore),
             action("cancel", "Cancelar consultas", "Interromper a execução atual", .stop, "⌘.", .action,
                    .cancelQueries),
             action("settings", "Configurações…", "Preferências do herd", .info, "⌘,", .action, .openSettings),
@@ -301,8 +293,7 @@ final class CommandPaletteModel {
                    .toggleSidebar),
             action("console", "Alternar console", "Ver as consultas enviadas ao servidor", .clock, "⌃⌘C", .action,
                    .toggleConsole)
-        ])
-        return items
+        ]
     }
 
     private func action(

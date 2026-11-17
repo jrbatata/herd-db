@@ -116,6 +116,14 @@ struct MainWindow: View {
             RestoreSheet(wizard: wizard, workspace: workspace)
                 .environment(app)
         }
+        .sheet(item: $workspace.sqlServerBackup) { wizard in
+            SQLServerBackupSheet(wizard: wizard, workspace: workspace)
+                .environment(app)
+        }
+        .sheet(item: $workspace.sqlServerRestore) { wizard in
+            SQLServerRestoreSheet(wizard: wizard, workspace: workspace)
+                .environment(app)
+        }
         .sheet(item: $workspace.tableSubObjectWizard) { wizard in
             CreateTableSubObjectSheet(wizard: wizard, workspace: workspace)
                 .environment(app)
