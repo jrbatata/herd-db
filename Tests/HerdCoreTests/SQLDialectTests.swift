@@ -72,6 +72,7 @@ final class SQLDialectTests: XCTestCase {
 
         named.engine = .sqlServer
         named.port = 1433
-        XCTAssertFalse(named.isRunnable, "SQL Server has no driver yet")
+        XCTAssertTrue(named.isRunnable, "SQL Server now has a driver")
+        XCTAssertEqual(named.maintenanceDatabase, "master")
     }
 }

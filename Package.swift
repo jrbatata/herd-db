@@ -11,6 +11,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.21.0"),
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.27.0"),
+        .package(url: "https://github.com/vkuttyp/CosmoSQLClient-Swift.git", from: "1.6.4"),
     ],
     targets: [
         .target(
@@ -18,6 +19,8 @@ let package = Package(
             dependencies: [
                 .product(name: "PostgresNIO", package: "postgres-nio"),
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
+                .product(name: "CosmoMSSQL", package: "CosmoSQLClient-Swift"),
+                .product(name: "CosmoSQLCore", package: "CosmoSQLClient-Swift"),
             ]
         ),
         .executableTarget(

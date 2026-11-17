@@ -17,16 +17,11 @@ public final class DriverRegistry {
         if let existing = drivers[config.id] { return existing }
 
         let driver: any DatabaseDriver
-        switch config.engine {
-        case .postgres:
-            driver = PostgresDriver(
-                config: config,
-                password: store.password(for: config.id),
-                recorder: recorder
-            )
-        case .sqlServer:
-            driver = UnsupportedDriver(engine: .sqlServer)
-        }
+        driver = DatabaseDriverFactory.make(
+            config: config,
+            password: store.password(for: config.id),
+            recorder: recorder
+        )
         drivers[config.id] = driver
         return driver
     }
@@ -41,6 +36,22 @@ public final class DriverRegistry {
         drivers.removeAll()
         for driver in current {
             Task { await driver.shutdown() }
+        }
+    }
+}
+
+/// Escolhe o driver certo para a configuração, sem que a UI precise conhecer cada engine.
+public enum DatabaseDriverFactory {
+    public static func make(
+        config: ConnectionConfig,
+        password: String?,
+        recorder: QueryLogRecorder? = nil
+    ) -> any DatabaseDriver {
+        switch config.engine {
+        case .postgres:
+            return PostgresDriver(config: config, password: password, recorder: recorder)
+        case .sqlServer:
+            return SQLServerDriver(config: config, password: password, recorder: recorder)
         }
     }
 }

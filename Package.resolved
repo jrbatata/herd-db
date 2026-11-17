@@ -1,6 +1,15 @@
 {
-  "originHash" : "76e8168688dba894ba0b26a195659da8f0516a92a38db1e7ba329d78c61bdcfd",
+  "originHash" : "c5a12359267b14837a401eaff851947591b75cc97d74a0d71e9cd3a3fbb94d05",
   "pins" : [
+    {
+      "identity" : "cosmosqlclient-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/vkuttyp/CosmoSQLClient-Swift.git",
+      "state" : {
+        "revision" : "8a9559be53b91307e7ffb15e1035dfee7ad23856",
+        "version" : "1.6.4"
+      }
+    },
     {
       "identity" : "postgres-nio",
       "kind" : "remoteSourceControl",
@@ -51,8 +60,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-crypto.git",
       "state" : {
-        "revision" : "f8fad2f95ad67b45f6340c0960e2396094d67e07",
-        "version" : "5.1.1"
+        "revision" : "95ba0316a9b733e92bb6b071255ff46263bbe7dc",
+        "version" : "3.15.1"
       }
     },
     {

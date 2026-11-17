@@ -81,9 +81,9 @@ public enum DatabaseEngine: String, Codable, CaseIterable, Identifiable, Sendabl
         }
     }
 
-    /// Engines that already have a working driver. SQL Server arrives in phase 6.
+    /// Engines with a working driver.
     public var isAvailable: Bool {
-        self == .postgres
+        true
     }
 
     public var symbolName: String {
@@ -103,13 +103,15 @@ public struct ConnectionConfig: Identifiable, Codable, Hashable, Sendable {
     public var username: String
     public var database: String
     public var useTLS: Bool
+    /// Accepts self-signed certificates (SQL Server's `TrustServerCertificate`).
+    public var trustServerCertificate: Bool
     /// Confirmation level applied to every operation that can change data.
     public var safeMode: SafeMode
     /// Marks a connection as production so the UI can highlight it.
     public var isProduction: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, engine, host, port, username, database, useTLS, safeMode, isProduction
+        case id, name, engine, host, port, username, database, useTLS, trustServerCertificate, safeMode, isProduction
     }
 
     public init(
@@ -121,6 +123,7 @@ public struct ConnectionConfig: Identifiable, Codable, Hashable, Sendable {
         username: String = NSUserName(),
         database: String = "",
         useTLS: Bool = false,
+        trustServerCertificate: Bool = false,
         safeMode: SafeMode = .silent,
         isProduction: Bool = false
     ) {
@@ -132,6 +135,7 @@ public struct ConnectionConfig: Identifiable, Codable, Hashable, Sendable {
         self.username = username
         self.database = database
         self.useTLS = useTLS
+        self.trustServerCertificate = trustServerCertificate
         self.safeMode = safeMode
         self.isProduction = isProduction
     }
@@ -146,6 +150,7 @@ public struct ConnectionConfig: Identifiable, Codable, Hashable, Sendable {
         username = try container.decode(String.self, forKey: .username)
         database = try container.decode(String.self, forKey: .database)
         useTLS = try container.decodeIfPresent(Bool.self, forKey: .useTLS) ?? false
+        trustServerCertificate = try container.decodeIfPresent(Bool.self, forKey: .trustServerCertificate) ?? false
         // Configurações antigas não têm os campos; os padrões são sem proteção e não-produção.
         safeMode = try container.decodeIfPresent(SafeMode.self, forKey: .safeMode) ?? .silent
         isProduction = try container.decodeIfPresent(Bool.self, forKey: .isProduction) ?? false
@@ -304,8 +309,17 @@ public struct ServerInfo: Sendable, Equatable {
         self.version = version
     }
 
-    /// "PostgreSQL 18.1" out of the full version banner.
+    /// "PostgreSQL 18.1" out of the full version banner; "SQL Server 2022" for T-SQL.
     public var shortVersion: String {
+        if version.contains("Azure SQL Edge") { return "Azure SQL Edge" }
+        if version.contains("SQL Azure") { return "Azure SQL" }
+        if let range = version.range(of: "SQL Server ") {
+            let rest = version[range.upperBound...]
+            let token = rest.split(separator: " ", maxSplits: 1).first.map(String.init) ?? ""
+            if !token.isEmpty {
+                return "SQL Server \(token)"
+            }
+        }
         let parts = version.split(separator: " ", maxSplits: 2)
         guard parts.count >= 2 else { return version }
         return "\(parts[0]) \(parts[1])"

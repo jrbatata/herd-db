@@ -72,13 +72,13 @@ struct ConnectionSheet: View {
                     }
                     Divider()
                     field("Banco") {
-                        TextField("Opcional", text: $config.database)
+                        TextField(config.engine == .sqlServer ? "master" : "Opcional", text: $config.database)
                     }
                 }
 
                 group("Autenticação") {
                     field("Usuário") {
-                        TextField("postgres", text: $config.username)
+                        TextField(config.engine == .sqlServer ? "sa" : "postgres", text: $config.username)
                     }
                     Divider()
                     field("Senha") {
@@ -105,11 +105,24 @@ struct ConnectionSheet: View {
                 }
 
                 group("Segurança") {
-                    field("Usar SSL") {
+                    field(config.engine == .sqlServer ? "Exigir TLS" : "Usar SSL") {
                         Toggle("Usar SSL", isOn: $config.useTLS)
                             .labelsHidden()
                             .toggleStyle(.switch)
                             .controlSize(.mini)
+                            .help(config.engine == .sqlServer
+                                  ? "Desligado, usa TLS se o servidor oferecer. Ligado, recusa conexões sem criptografia."
+                                  : "Exige uma conexão criptografada.")
+                    }
+                    if config.engine == .sqlServer {
+                        Divider()
+                        field("Confiar no certificado") {
+                            Toggle("Confiar no certificado", isOn: $config.trustServerCertificate)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                                .controlSize(.mini)
+                                .help("Aceita certificados autoassinados, como os de servidores de desenvolvimento.")
+                        }
                     }
                     Divider()
                     field("Proteção") {
@@ -158,10 +171,14 @@ struct ConnectionSheet: View {
                 }
                 .padding(.leading, 4)
 
-                if !config.engine.isAvailable {
-                    Label { Text("O driver de SQL Server chega na fase 6. Por enquanto somente PostgreSQL conecta.") } icon: { Icon(.info, size: 14) }
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(.secondary)
+                if config.engine == .sqlServer {
+                    Label {
+                        Text("Autenticação SQL com usuário e senha. Windows/NTLM ainda não é suportado.")
+                    } icon: {
+                        Icon(.info, size: 14)
+                    }
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
                 }
             }
             .padding(.horizontal, 22)
@@ -183,6 +200,10 @@ struct ConnectionSheet: View {
         .onChange(of: config.engine) { oldEngine, newEngine in
             if config.port == oldEngine.defaultPort || config.port == 0 {
                 config.port = newEngine.defaultPort
+            }
+            // SQL Server costuma usar certificado autoassinado em desenvolvimento.
+            if newEngine == .sqlServer, oldEngine != .sqlServer {
+                config.trustServerCertificate = true
             }
         }
         .onChange(of: config.isProduction) { _, isProduction in
@@ -286,7 +307,7 @@ struct ConnectionSheet: View {
         let password = self.password
 
         Task {
-            let driver = PostgresDriver(config: config, password: password)
+            let driver = DatabaseDriverFactory.make(config: config, password: password)
             do {
                 let info = try await driver.test()
                 await driver.shutdown()
