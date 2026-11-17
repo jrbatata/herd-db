@@ -275,6 +275,351 @@ final class SQLServerDriverTests: XCTestCase {
         XCTAssertEqual(rows.rows, [["primeiro"]])
     }
 
+    func testLogicalBackupAndRestoreToNewDatabase() async throws {
+        let driver = try makeDriver()
+        addTeardownBlock { await driver.shutdown() }
+
+        let suffix = UUID().uuidString.prefix(8).lowercased()
+        let source = "herd_log_src_\(suffix)"
+        let restored = "herd_log_dst_\(suffix)"
+        let backupDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("herd-log-\(suffix)", isDirectory: true)
+        try FileManager.default.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
+        let backupURL = backupDirectory.appendingPathComponent("\(source).sql")
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: backupDirectory)
+            await driver.shutdown()
+            _ = try? await driver.run(
+                "ALTER DATABASE [\(restored)] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [\(restored)];",
+                database: "master"
+            )
+            _ = try? await driver.run(
+                "ALTER DATABASE [\(source)] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [\(source)];",
+                database: "master"
+            )
+        }
+
+        _ = try await driver.run("CREATE DATABASE [\(source)];", database: "master")
+        _ = try await driver.run("CREATE SCHEMA [app];", database: source)
+        _ = try await driver.run(
+            "CREATE SEQUENCE [app].[order_seq] AS int START WITH 100 INCREMENT BY 5;",
+            database: source
+        )
+        _ = try await driver.run(
+            "CREATE TYPE [app].[phone] FROM varchar(20) NOT NULL;",
+            database: source
+        )
+        _ = try await driver.run(
+            """
+            CREATE TABLE [app].[owners] (
+                id int IDENTITY(1,1) NOT NULL CONSTRAINT [pk_owners] PRIMARY KEY,
+                name nvarchar(100) NOT NULL,
+                phone [app].[phone] NULL,
+                payload varbinary(max) NULL,
+                balance decimal(18,2) NOT NULL CONSTRAINT [df_owners_balance] DEFAULT 0,
+                created datetime2(7) NOT NULL CONSTRAINT [df_owners_created] DEFAULT sysutcdatetime(),
+                CONSTRAINT [ck_owners_balance] CHECK (balance >= 0)
+            );
+            """,
+            database: source
+        )
+        _ = try await driver.run(
+            """
+            CREATE TABLE [app].[items] (
+                id int NOT NULL CONSTRAINT [pk_items] PRIMARY KEY,
+                owner_id int NULL,
+                title nvarchar(200) NOT NULL,
+                code varchar(10) NULL,
+                qty smallint NOT NULL,
+                price money NULL,
+                active bit NOT NULL CONSTRAINT [df_items_active] DEFAULT 1,
+                uid uniqueidentifier NOT NULL CONSTRAINT [df_items_uid] DEFAULT newid(),
+                notes xml NULL,
+                created date NULL,
+                at_time time(7) NULL,
+                stamp datetimeoffset(7) NULL,
+                big nvarchar(max) NULL,
+                blob varbinary(max) NULL,
+                CONSTRAINT [fk_items_owner] FOREIGN KEY (owner_id)
+                    REFERENCES [app].[owners](id) ON DELETE SET NULL
+            );
+            """,
+            database: source
+        )
+        _ = try await driver.run(
+            "CREATE INDEX [ix_items_owner] ON [app].[items](owner_id) INCLUDE (title);",
+            database: source
+        )
+        _ = try await driver.run(
+            "CREATE VIEW [app].[v_items] AS SELECT id, title FROM [app].[items];",
+            database: source
+        )
+        _ = try await driver.run(
+            "CREATE PROCEDURE [app].[p_items] AS SELECT COUNT(*) AS total FROM [app].[items];",
+            database: source
+        )
+        _ = try await driver.run(
+            "CREATE FUNCTION [app].[f_double](@n int) RETURNS int AS BEGIN RETURN @n * 2 END",
+            database: source
+        )
+        _ = try await driver.run(
+            "CREATE TRIGGER [app].[trg_items] ON [app].[items] AFTER INSERT AS RETURN",
+            database: source
+        )
+
+        _ = try await driver.run(
+            """
+            INSERT INTO [app].[owners] (name, phone, payload, balance) VALUES
+                (N'Ana ''Bia''', '11999999999', 0x00FF10, 10.50),
+                (N'João 🚀' + NCHAR(10) + N'GO' + NCHAR(10) + N'fim', NULL, NULL, 0);
+            """,
+            database: source
+        )
+        _ = try await driver.run(
+            """
+            INSERT INTO [app].[items]
+                (id, owner_id, title, code, qty, price, active, notes, created, at_time, stamp)
+            SELECT TOP (1200)
+                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)),
+                CASE WHEN ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) % 3 = 0 THEN 1 ELSE NULL END,
+                N'Item ' + CONVERT(nvarchar(10), ROW_NUMBER() OVER (ORDER BY (SELECT NULL))),
+                'C' + RIGHT('000' + CONVERT(varchar(10), ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) % 10), 3),
+                (ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) % 100),
+                CAST(ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) * 1.25 AS money),
+                1,
+                N'<r><n>1</n></r>',
+                '2024-01-15',
+                '13:45:12.1234567',
+                '2024-01-15T13:45:12.1234567+00:00'
+            FROM sys.all_objects a CROSS JOIN sys.all_objects b;
+            """,
+            database: source
+        )
+        _ = try await driver.run(
+            """
+            UPDATE [app].[items]
+            SET big = REPLICATE(CAST(N'á' AS nvarchar(max)), 200000),
+                blob = CONVERT(varbinary(max), REPLICATE(CAST('x' AS varchar(max)), 200000))
+            WHERE id = 1;
+            """,
+            database: source
+        )
+        let sequence = try await driver.run(
+            "SELECT NEXT VALUE FOR [app].[order_seq] AS value;",
+            database: source
+        )
+        XCTAssertEqual(sequence.rows, [["100"]])
+
+        let backup = try await driver.exportLogicalBackup(
+            database: source,
+            to: backupURL,
+            options: SQLServerLogicalBackupOptions(
+                includeData: true,
+                includeDropStatements: true,
+                includeIndexes: true,
+                includeProgrammability: true,
+                pageSize: 500,
+                insertBatchSize: 100
+            )
+        )
+        XCTAssertEqual(backup.tableCount, 2)
+        XCTAssertEqual(backup.rowCount, 1202)
+        XCTAssertGreaterThan(backup.bytes, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: backupURL.path))
+
+        let script = try String(contentsOf: backupURL, encoding: .utf8)
+        XCTAssertTrue(script.contains("CREATE TABLE [app].[items]"))
+        XCTAssertTrue(script.contains("IDENTITY(1,1)"))
+        XCTAssertTrue(script.contains("SET IDENTITY_INSERT [app].[owners] ON"))
+        XCTAssertTrue(script.contains("<r><n>1</n></r>"))
+        XCTAssertTrue(script.contains("CREATE VIEW [app].[v_items]"))
+
+        _ = try await driver.run("CREATE DATABASE [\(restored)];", database: "master")
+        let restore = try await driver.restoreLogicalScript(
+            database: restored,
+            from: backupURL,
+            options: SQLServerScriptRestoreOptions(stopOnError: true)
+        )
+        XCTAssertGreaterThan(restore.batchCount, 10)
+        XCTAssertTrue(restore.warnings.isEmpty, restore.warnings.joined(separator: "\n"))
+
+        let counts = try await driver.run(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM [app].[owners]),
+                (SELECT COUNT(*) FROM [app].[items]),
+                (SELECT COUNT(*) FROM [app].[v_items]);
+            """,
+            database: restored
+        )
+        XCTAssertEqual(counts.rows, [["2", "1200", "1200"]])
+
+        let ownersSQL = """
+            SELECT name, phone, payload, balance, created
+            FROM [app].[owners] ORDER BY id;
+            """
+        let sourceOwners = try await driver.run(ownersSQL, database: source)
+        let restoredOwners = try await driver.run(ownersSQL, database: restored)
+        XCTAssertEqual(sourceOwners.rows, restoredOwners.rows)
+
+        let accountsSQL = """
+            SELECT id, owner_id, title, code, qty, price, active,
+                   CONVERT(nvarchar(max), notes), created, at_time, stamp, uid,
+                   LEN(big), DATALENGTH(blob),
+                   CONVERT(varchar(64), HASHBYTES('SHA2_256', big), 2),
+                   CONVERT(varchar(64), HASHBYTES('SHA2_256', blob), 2)
+            FROM [app].[items] WHERE id IN (1, 7, 600, 1200) ORDER BY id;
+            """
+        let sourceItems = try await driver.run(accountsSQL, database: source)
+        let restoredItems = try await driver.run(accountsSQL, database: restored)
+        XCTAssertEqual(sourceItems.rows, restoredItems.rows)
+        XCTAssertEqual(restoredItems.rows[1][2], "Item 7")
+        XCTAssertEqual(restoredItems.rows[1][7], "<r><n>1</n></r>")
+        XCTAssertEqual(restoredItems.rows[0][12], "200000")
+        XCTAssertEqual(restoredItems.rows[0][13], "200000")
+
+        let objects = try await driver.run(
+            """
+            SELECT
+                OBJECT_ID(N'[app].[v_items]', N'V'),
+                OBJECT_ID(N'[app].[p_items]', N'P'),
+                OBJECT_ID(N'[app].[f_double]', N'FN'),
+                OBJECT_ID(N'[app].[trg_items]', N'TR'),
+                OBJECT_ID(N'[app].[fk_items_owner]', N'F'),
+                OBJECT_ID(N'[app].[ck_owners_balance]', N'C'),
+                TYPE_ID(N'[app].[phone]');
+            """,
+            database: restored
+        )
+        XCTAssertFalse(objects.rows[0].contains(nil), objects.rows[0].compactMap { $0 }.joined(separator: ", "))
+
+        let index = try await driver.run(
+            "SELECT COUNT(*) FROM sys.indexes WHERE name = N'ix_items_owner';",
+            database: restored
+        )
+        XCTAssertEqual(index.rows, [["1"]])
+
+        let nextSequence = try await driver.run(
+            "SELECT NEXT VALUE FOR [app].[order_seq] AS value;",
+            database: restored
+        )
+        XCTAssertEqual(nextSequence.rows, [["105"]])
+
+        _ = try await driver.run(
+            "INSERT INTO [app].[owners] (name) VALUES (N'Novo');",
+            database: restored
+        )
+        let identity = try await driver.run(
+            "SELECT MAX(id) FROM [app].[owners];",
+            database: restored
+        )
+        XCTAssertEqual(identity.rows, [["3"]])
+
+        let invalidOwner = await XCTAssertThrowsErrorAsync {
+            try await driver.run(
+                "INSERT INTO [app].[items] (id, owner_id, title, qty, active) VALUES (99999, 777, N'x', 1, 0);",
+                database: restored
+            )
+        }
+        XCTAssertNotNil(invalidOwner)
+
+        // Reexecutar o script no mesmo banco precisa funcionar (DROP + CREATE).
+        let rerun = try await driver.restoreLogicalScript(database: restored, from: backupURL)
+        XCTAssertTrue(rerun.warnings.isEmpty, rerun.warnings.joined(separator: "\n"))
+        let rerunCounts = try await driver.run(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM [app].[owners]),
+                (SELECT COUNT(*) FROM [app].[items]);
+            """,
+            database: restored
+        )
+        XCTAssertEqual(rerunCounts.rows, [["2", "1200"]])
+    }
+
+    func testLogicalBackupOfSingleTableSkipsItsDependencies() async throws {
+        let driver = try makeDriver()
+        addTeardownBlock { await driver.shutdown() }
+
+        let suffix = UUID().uuidString.prefix(8).lowercased()
+        let source = "herd_tbl_src_\(suffix)"
+        let restored = "herd_tbl_dst_\(suffix)"
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("herd-tbl-\(suffix)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let backupURL = directory.appendingPathComponent("tabela.sql")
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: directory)
+            await driver.shutdown()
+            _ = try? await driver.run(
+                "ALTER DATABASE [\(restored)] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [\(restored)];",
+                database: "master"
+            )
+            _ = try? await driver.run(
+                "ALTER DATABASE [\(source)] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [\(source)];",
+                database: "master"
+            )
+        }
+
+        _ = try await driver.run("CREATE DATABASE [\(source)];", database: "master")
+        _ = try await driver.run("CREATE SCHEMA [app];", database: source)
+        _ = try await driver.run(
+            "CREATE TABLE [app].[authors] (id int PRIMARY KEY, name nvarchar(50) NOT NULL);",
+            database: source
+        )
+        _ = try await driver.run(
+            """
+            CREATE TABLE [app].[books] (
+                id int PRIMARY KEY,
+                author_id int NULL,
+                title nvarchar(100) NOT NULL,
+                CONSTRAINT [fk_books_author] FOREIGN KEY (author_id) REFERENCES [app].[authors](id)
+            );
+            """,
+            database: source
+        )
+        _ = try await driver.run(
+            "INSERT INTO [app].[authors] VALUES (1, N'Autora'); INSERT INTO [app].[books] VALUES (1, 1, N'Livro');",
+            database: source
+        )
+
+        _ = try await driver.exportLogicalBackup(
+            database: source,
+            to: backupURL,
+            options: SQLServerLogicalBackupOptions(tables: ["app.books"])
+        )
+        let script = try String(contentsOf: backupURL, encoding: .utf8)
+        XCTAssertTrue(script.contains("CREATE TABLE [app].[books]"))
+        XCTAssertFalse(script.contains("CREATE TABLE [app].[authors]"))
+        XCTAssertFalse(script.contains("fk_books_author"))
+
+        _ = try await driver.run("CREATE DATABASE [\(restored)];", database: "master")
+        _ = try await driver.restoreLogicalScript(database: restored, from: backupURL)
+
+        let result = try await driver.run(
+            "SELECT COUNT(*) FROM [app].[books];",
+            database: restored
+        )
+        XCTAssertEqual(result.rows, [["1"]])
+        let authors = try await driver.run(
+            "SELECT OBJECT_ID(N'[app].[authors]');",
+            database: restored
+        )
+        XCTAssertEqual(authors.rows, [[nil]])
+    }
+
+    func testLargeBatchKeepsTheConnectionUsable() async throws {
+        let driver = try makeDriver()
+        addTeardownBlock { await driver.shutdown() }
+
+        let text = String(repeating: "a", count: 200_000)
+        let length = try await driver.run("SELECT LEN(N'\(text)') AS n;", database: "master")
+        XCTAssertEqual(length.rows, [["200000"]])
+
+        let after = try await driver.run("SELECT 42 AS answer;", database: "master")
+        XCTAssertEqual(after.rows, [["42"]])
+    }
+
     // MARK: - Helpers
 
     private func makeDriver() throws -> SQLServerDriver {
@@ -331,6 +676,19 @@ final class SQLServerFormattingTests: XCTestCase {
             ),
             "00000000-0000-0000-0000-000000000001"
         )
+    }
+
+    func testScriptSplitterRecognizesGO() {
+        XCTAssertTrue(SQLServerScriptSplitter.isBatchSeparator("GO"))
+        XCTAssertTrue(SQLServerScriptSplitter.isBatchSeparator("  go  "))
+        XCTAssertTrue(SQLServerScriptSplitter.isBatchSeparator("GO 3"))
+        XCTAssertTrue(SQLServerScriptSplitter.isBatchSeparator("go 10"))
+        XCTAssertFalse(SQLServerScriptSplitter.isBatchSeparator("GOTO label"))
+        XCTAssertFalse(SQLServerScriptSplitter.isBatchSeparator("GO;"))
+        XCTAssertFalse(SQLServerScriptSplitter.isBatchSeparator("SELECT 1"))
+        XCTAssertEqual(SQLServerScriptSplitter.repeatCount(for: "GO"), 1)
+        XCTAssertEqual(SQLServerScriptSplitter.repeatCount(for: "go 4"), 4)
+        XCTAssertNil(SQLServerScriptSplitter.repeatCount(for: "SELECT 1"))
     }
 
     func testDateColumnsDoNotShiftWithLocalTimeZone() {

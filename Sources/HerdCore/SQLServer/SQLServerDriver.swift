@@ -47,7 +47,7 @@ public struct SQLServerRestoreMove: Hashable, Sendable {
 public actor SQLServerDriver: DatabaseDriver {
     public nonisolated let dialect: SQLDialect = .sqlServer
 
-    private let config: ConnectionConfig
+    let config: ConnectionConfig
     private let password: String?
     private let recorder: QueryLogRecorder?
     private var pools: [String: MSSQLConnectionPool] = [:]
@@ -76,7 +76,7 @@ public actor SQLServerDriver: DatabaseDriver {
         return pool
     }
 
-    private func connectionConfiguration(database: String) -> MSSQLConnection.Configuration {
+    func connectionConfiguration(database: String) -> MSSQLConnection.Configuration {
         MSSQLConnection.Configuration(
             host: config.host,
             port: config.port,
@@ -736,7 +736,7 @@ public actor SQLServerDriver: DatabaseDriver {
         END
         """
 
-    private func queryRows(_ sql: String, database: String, binds: [SQLValue] = []) async throws -> [SQLRow] {
+    func queryRows(_ sql: String, database: String, binds: [SQLValue] = []) async throws -> [SQLRow] {
         let sets = try await fetch(sql, database: database, binds: binds)
         return sets.first?.rows ?? []
     }
@@ -790,7 +790,7 @@ public actor SQLServerDriver: DatabaseDriver {
         }
     }
 
-    private static func describe(_ error: Error) -> String {
+    static func describe(_ error: Error) -> String {
         if let error = error as? SQLError {
             switch error {
             case .serverError(let code, let message, _):

@@ -365,6 +365,8 @@ struct TreeRowView: View {
                     .keyboardShortcut(.delete, modifiers: .command)
                 Button("Excluir em cascata…", role: .destructive) { workspace.presentDropObject(for: node, force: true) }
                     .keyboardShortcut(.delete, modifiers: [.command, .option])
+            }
+            if node.kind == .table {
                 Divider()
                 Button("Backup…") { workspace.presentBackup(for: node) }
                     .keyboardShortcut("b", modifiers: [.command, .shift])

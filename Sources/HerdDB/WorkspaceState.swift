@@ -520,13 +520,6 @@ final class WorkspaceState {
               let config = app.connections.connection(id: node.connectionID) else { return }
 
         if config.engine == .sqlServer {
-            guard node.kind == .database else {
-                alert = AlertMessage(
-                    title: "Backup de tabela indisponível no SQL Server",
-                    message: "O SQL Server faz backup do banco inteiro. Selecione o banco para criar um .bak ou use o editor SQL para exportar a tabela."
-                )
-                return
-            }
             sqlServerBackup = SQLServerBackupState(
                 node: node,
                 connectionName: config.name,

@@ -20,7 +20,7 @@ Dê dois cliques em uma tabela para abrir seus dados paginados ou abra quantas a
 | A estrutura do banco    | Árvore sob demanda, filtro instantâneo (`⇧⌘F`), inspetor de DDL (`⌘I`) e wizards nativos de criação.   |
 | Consultas e scripts SQL | Editor `NSTextView` com realce de sintaxe, formatação (`⇧⌥F`), snippets e autocomplete (`⌥Space`).     |
 | Os dados da tabela      | Edição inline com duplo clique, adição/remoção de linhas, revisão do SQL gerado e commit em transação. |
-| Rotinas de operação     | Backup e restore PostgreSQL via `pg_dump`/`pg_restore`/`psql` e importação/exportação de CSV com log ao vivo. |
+| Rotinas de operação     | Backup e restore PostgreSQL via `pg_dump`/`pg_restore`/`psql`, backup `.sql` do SQL Server salvo no Mac, `.bak` nativo no servidor e importação/exportação de CSV. |
 | Segurança e privacidade | Credenciais guardadas no Chaveiro do macOS, conexões locais em JSON (`0600`) e zero telemetria.        |
 
 ## Escreva SQL, edite dados e revise antes de aplicar
@@ -92,7 +92,20 @@ Structure/DDL reúne colunas, índices e constraints, gera o `CREATE TABLE` comp
 
 ### 6. SQL Server — consultas e catálogo
 
-O SQL Server conecta pelo protocolo TDS 7.4 em Swift puro (CosmoMSSQL), sem FreeTDS nem ODBC instalado. Login SQL, TLS opcional e certificados autoassinados são configuráveis no formulário de conexão. Navegação por bancos, schemas, tabelas, views e rotinas, execução de scripts, resultados e autocomplete funcionam como no PostgreSQL. Backup e restore usam `BACKUP DATABASE`/`RESTORE DATABASE` com caminho no servidor e progresso; DDL e processos seguem específicos do PostgreSQL. Autenticação Windows/NTLM e Entra ID ainda não são suportadas — o formulário avisa e o erro de login explica o motivo.
+O SQL Server conecta pelo protocolo TDS 7.4 em Swift puro (CosmoMSSQL), sem FreeTDS nem ODBC instalado. Login SQL, TLS opcional e certificados autoassinados são configuráveis no formulário de conexão. Navegação por bancos, schemas, tabelas, views e rotinas, execução de scripts, resultados e autocomplete funcionam como no PostgreSQL. DDL e processos seguem específicos do PostgreSQL. Autenticação Windows/NTLM e Entra ID ainda não são suportadas — o formulário avisa e o erro de login explica o motivo.
+
+O driver TDS é uma cópia local em `Vendor/CosmoSQLClient` (MIT) com uma correção no tamanho de pacote negociado: o SQL Server encerrava a conexão ao receber lotes maiores que 16 KB. Sem isso, restaurar textos, XML ou binários grandes falhava no meio do processo.
+
+#### Backup do SQL Server: dois caminhos
+
+| Formato | Onde fica | Indicado para |
+| :--- | :--- | :--- |
+| **Script `.sql`** | No Mac, no caminho escolhido | Levar o banco para outro servidor, versionar ou inspecionar o conteúdo. Inclui schema, dados, índices, FKs, views, procedures, functions, triggers, synonyms e sequences. |
+| **`.bak` nativo** | No disco do SQL Server (ou UNC) | Rotina de backup do próprio servidor, cópia física rápida e completa. |
+
+O backup `.sql` é o equivalente ao `pg_dump`: o herd lê o catálogo e os dados e grava o arquivo localmente, sem depender de um caminho no servidor. Ele não inclui usuários, permissões, filegroups, partições, full-text, índices de views nem estatísticas; tipos como `sql_variant`, `geometry`, `geography`, `hierarchyid` e colunas Always Encrypted ainda não são exportados. `datetimeoffset` é gravado em UTC (o offset original não é preservado). Nesses casos, use o `.bak` nativo. Um backup de tabela única inclui a tabela e seus índices/constraints, mas não recria FKs para outras tabelas.
+
+O restore `.sql` lê o arquivo no Mac, divide em lotes por `GO` e executa no banco de destino. É possível criar o banco automaticamente se ele não existir. Tabelas temporais são exportadas como tabelas comuns, preservando os dados.
 
 ### 7. Operações de banco sem sair do Herd
 
@@ -203,6 +216,10 @@ O diagrama entidade-relacionamento será construído sobre as PKs e FKs que o He
 - [x] Dialeto `[x]`/`TOP` e catálogos do SQL Server
 - [x] Paridade: árvore, abas, execução, resultados, autocomplete e histórico
 - [x] Backup/restore nativo via `BACKUP DATABASE`/`RESTORE DATABASE`, com `FILELISTONLY`, `MOVE`, `REPLACE` e progresso
+- [x] Backup lógico `.sql` salvo no Mac, com schema, dados, índices, FKs e objetos programáveis
+- [x] Restore `.sql` local com suporte a `GO`, criação automática do banco de destino e progresso
+- [x] Backup lógico de uma tabela específica, sem as dependências externas
+- [x] Driver TDS local com o tamanho de pacote negociado corrigido para lotes grandes
 - [x] Testes de integração contra SQL Server em Docker
 - [x] Aviso direto no formulário sobre login SQL x autenticação do Windows
 - [ ] Autenticação Windows/NTLM e Microsoft Entra ID
@@ -212,6 +229,7 @@ O diagrama entidade-relacionamento será construído sobre as PKs e FKs que o He
 
 - [x] Backup/restore PostgreSQL com `pg_dump`/`pg_restore`/`psql` (`.dump` e `.sql`), progresso e log na aba **Processos**
 - [x] Backup/restore SQL Server via `BACKUP DATABASE`/`RESTORE DATABASE` (arquivo no servidor)
+- [x] Backup lógico `.sql` do SQL Server salvo no Mac e restore local com `GO`
 - [x] Novo banco pela interface (`CreateDatabaseSheet` / `⌥⌘D`)
 - [x] Gerar script CREATE/INSERT/UPDATE/DELETE/SELECT pelo menu da tabela
 - [x] Copiar nome do objeto (`⌥⌘C`) e atualizar nó (`⌘R`)
