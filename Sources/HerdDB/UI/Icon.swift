@@ -199,4 +199,65 @@ extension DatabaseEngine {
         case .sqlServer: .serverStack
         }
     }
+
+    /// Ícone de marca colorido (PostgreSQL/SQL Server). `nil` quando o app roda
+    /// fora do bundle, aí a UI cai no `iconSymbol`.
+    @MainActor
+    var brandImage: NSImage? {
+        BrandArtwork.image(for: self)
+    }
+}
+
+/// Ícones de marca empacotados em `Contents/Resources/Branding`.
+@MainActor
+private enum BrandArtwork {
+    private static var cache: [DatabaseEngine: NSImage] = [:]
+
+    static func image(for engine: DatabaseEngine) -> NSImage? {
+        if let cached = cache[engine] { return cached }
+        let name: String = switch engine {
+        case .postgres: "postgres"
+        case .sqlServer: "sqlserver"
+        }
+        guard let url = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: "Branding"),
+              let loaded = NSImage(contentsOf: url)
+        else { return nil }
+        // O NSPopUpButton desenha o item com o tamanho em pontos da imagem,
+        // então reduzimos o bitmap de 128 px para um ícone de 16 pt (32 px em Retina).
+        let image = resized(loaded, to: NSSize(width: 16, height: 16))
+        cache[engine] = image
+        return image
+    }
+
+    private static func resized(_ image: NSImage, to size: NSSize) -> NSImage {
+        let scale: CGFloat = 2
+        let width = max(1, Int(size.width * scale))
+        let height = max(1, Int(size.height * scale))
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: width,
+            pixelsHigh: height,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { return image }
+
+        rep.size = size
+        NSGraphicsContext.saveGraphicsState()
+        if let context = NSGraphicsContext(bitmapImageRep: rep) {
+            NSGraphicsContext.current = context
+            context.imageInterpolation = .high
+            image.draw(in: NSRect(origin: .zero, size: size))
+            context.flushGraphics()
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        let result = NSImage(size: size)
+        result.addRepresentation(rep)
+        return result
+    }
 }

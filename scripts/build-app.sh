@@ -16,6 +16,8 @@ cp "$binary_dir/herd-db" "$app/Contents/MacOS/herd-db"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 cp Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cp Resources/AppIconDark.icns "$app/Contents/Resources/AppIconDark.icns"
+mkdir -p "$app/Contents/Resources/Branding"
+cp Resources/Branding/*.png "$app/Contents/Resources/Branding/"
 
 codesign --force --deep --sign - "$app" >/dev/null
 codesign --verify --strict "$app"

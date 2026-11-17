@@ -81,11 +81,6 @@ public enum DatabaseEngine: String, Codable, CaseIterable, Identifiable, Sendabl
         }
     }
 
-    /// Engines with a working driver.
-    public var isAvailable: Bool {
-        true
-    }
-
     public var symbolName: String {
         switch self {
         case .postgres: "database"
@@ -169,8 +164,7 @@ public struct ConnectionConfig: Identifiable, Codable, Hashable, Sendable {
     }
 
     public var isRunnable: Bool {
-        engine.isAvailable
-            && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && (1...65535).contains(port)

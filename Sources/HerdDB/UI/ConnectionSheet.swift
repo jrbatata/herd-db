@@ -46,19 +46,8 @@ struct ConnectionSheet: View {
                     }
                     Divider()
                     field("Tipo") {
-                        Picker("Tipo", selection: $config.engine) {
-                            ForEach(DatabaseEngine.allCases) { engine in
-                                Label {
-                                    Text(engine.isAvailable ? engine.displayName : "\(engine.displayName) (em breve)")
-                                } icon: {
-                                    Image(nsImage: engine.iconSymbol.image(solid: false))
-                                }
-                                .tag(engine)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .fixedSize()
+                        EnginePopupButton(engine: $config.engine)
+                            .fixedSize()
                     }
                 }
 
@@ -245,7 +234,7 @@ struct ConnectionSheet: View {
             Button("Salvar") { save() }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .disabled(!config.isRunnable || !config.engine.isAvailable)
+                .disabled(!config.isRunnable)
         }
         .padding(20)
     }
