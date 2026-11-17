@@ -172,6 +172,7 @@ private struct LogicalColumn {
     var declaredType: String
     var baseType: String
     var isUserDefined: Bool
+    var isAssemblyType: Bool
     var typeSchema: String?
     var maxLength: Int
     var precision: Int
@@ -293,6 +294,11 @@ private enum LogicalSQL {
 
     static func literal(_ value: String) -> String {
         "N'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+    }
+
+    /// Nome `schema.objeto` para usar dentro de `OBJECT_ID(N'...')`.
+    static func objectPath(_ schema: String, _ name: String) -> String {
+        "\(schema).\(name)".replacingOccurrences(of: "'", with: "''")
     }
 }
 
@@ -623,7 +629,7 @@ public extension SQLServerDriver {
                     let definition = "CREATE TYPE \(qualified) FROM " +
                         renderType(type.baseType, maxLength: type.maxLength, precision: type.precision, scale: type.scale)
                     writer.appendLine(
-                        "IF TYPE_ID(N'\(type.schema).\(type.name)') IS NULL " +
+                        "IF TYPE_ID(N'\(LogicalSQL.objectPath(type.schema, type.name))') IS NULL " +
                         "EXEC(N'\(definition.replacingOccurrences(of: "'", with: "''"))');"
                     )
                 }
@@ -636,7 +642,7 @@ public extension SQLServerDriver {
                 for sequence in catalog.sequences {
                     let definition = renderSequence(sequence).trimmingCharacters(in: CharacterSet(charactersIn: ";"))
                     writer.appendLine(
-                        "IF OBJECT_ID(N'\(sequence.schema).\(sequence.name)', N'SO') IS NULL " +
+                        "IF OBJECT_ID(N'\(LogicalSQL.objectPath(sequence.schema, sequence.name))', N'SO') IS NULL " +
                         "EXEC(N'\(definition.replacingOccurrences(of: "'", with: "''"))');"
                     )
                 }
@@ -1078,8 +1084,9 @@ public extension SQLServerDriver {
             SELECT c.column_id, c.name,
                    ty.name AS declared_type,
                    ty.is_user_defined,
+                   ty.is_assembly_type,
                    ts.name AS type_schema,
-                   bt.name AS base_type,
+                   COALESCE(bt.name, ty.name) AS base_type,
                    c.max_length, c.precision, c.scale,
                    c.is_nullable, c.is_identity, c.is_computed,
                    c.is_column_set, c.is_sparse,
@@ -1094,7 +1101,7 @@ public extension SQLServerDriver {
                    CONVERT(bigint, ic.increment_value) AS identity_increment
             FROM sys.columns c
             JOIN sys.types ty ON ty.user_type_id = c.user_type_id
-            JOIN sys.types bt ON bt.user_type_id = c.system_type_id
+            LEFT JOIN sys.types bt ON bt.user_type_id = c.system_type_id
             LEFT JOIN sys.schemas ts ON ts.schema_id = ty.schema_id
             LEFT JOIN sys.default_constraints dc
               ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
@@ -1107,37 +1114,38 @@ public extension SQLServerDriver {
             """
         let rows = try await connection.query(sql, [.int(objectID)])
         return rows.compactMap { row in
-            guard row.values.count >= 22,
+            guard row.values.count >= 24,
                   let columnID = SQLServerCellFormatter.int(row.values[0]).map(Int.init),
                   let name = row.values[1].asString(),
                   let declared = row.values[2].asString(),
-                  let baseType = row.values[5].asString() else { return nil }
+                  let baseType = row.values[6].asString() else { return nil }
 
             let isUserDefined = SQLServerCellFormatter.bool(row.values[3]) ?? false
-            let typeSchema = row.values[4].asString()
-            let maxLength = Int(SQLServerCellFormatter.int(row.values[6]) ?? 0)
-            let precision = Int(SQLServerCellFormatter.int(row.values[7]) ?? 0)
-            let scale = Int(SQLServerCellFormatter.int(row.values[8]) ?? 0)
-            let isNullable = SQLServerCellFormatter.bool(row.values[9]) ?? true
-            let isIdentity = SQLServerCellFormatter.bool(row.values[10]) ?? false
-            let isComputed = SQLServerCellFormatter.bool(row.values[11]) ?? false
-            let isColumnSet = SQLServerCellFormatter.bool(row.values[12]) ?? false
-            let isSparse = SQLServerCellFormatter.bool(row.values[13]) ?? false
-            let rawCollation = row.values[14].asString()
+            let isAssemblyType = SQLServerCellFormatter.bool(row.values[4]) ?? false
+            let typeSchema = row.values[5].asString()
+            let maxLength = Int(SQLServerCellFormatter.int(row.values[7]) ?? 0)
+            let precision = Int(SQLServerCellFormatter.int(row.values[8]) ?? 0)
+            let scale = Int(SQLServerCellFormatter.int(row.values[9]) ?? 0)
+            let isNullable = SQLServerCellFormatter.bool(row.values[10]) ?? true
+            let isIdentity = SQLServerCellFormatter.bool(row.values[11]) ?? false
+            let isComputed = SQLServerCellFormatter.bool(row.values[12]) ?? false
+            let isColumnSet = SQLServerCellFormatter.bool(row.values[13]) ?? false
+            let isSparse = SQLServerCellFormatter.bool(row.values[14]) ?? false
+            let rawCollation = row.values[15].asString()
             // COLLATE não é válido para tipos definidos pelo usuário, e a
             // collation padrão do banco já é aplicada automaticamente.
             let collation = isUserDefined || rawCollation?.caseInsensitiveCompare(databaseCollation ?? "") == .orderedSame
                 ? nil
                 : rawCollation
-            let defaultDefinition = row.values[15].asString()
-            let defaultName = row.values[16].asString()
-            let computedDefinition = row.values[17].asString()
-            let isPersisted = SQLServerCellFormatter.bool(row.values[18]) ?? false
-            let generatedAlways = Int(SQLServerCellFormatter.int(row.values[19]) ?? 0)
-            let isEncrypted = !row.values[20].isNull
-            let identitySeed = SQLServerCellFormatter.int(row.values[21]).map(String.init)
-            let identityIncrement = row.values.count > 22
-                ? SQLServerCellFormatter.int(row.values[22]).map(String.init)
+            let defaultDefinition = row.values[16].asString()
+            let defaultName = row.values[17].asString()
+            let computedDefinition = row.values[18].asString()
+            let isPersisted = SQLServerCellFormatter.bool(row.values[19]) ?? false
+            let generatedAlways = Int(SQLServerCellFormatter.int(row.values[20]) ?? 0)
+            let isEncrypted = !row.values[21].isNull
+            let identitySeed = SQLServerCellFormatter.int(row.values[22]).map(String.init)
+            let identityIncrement = row.values.count > 23
+                ? SQLServerCellFormatter.int(row.values[23]).map(String.init)
                 : nil
 
             let isRowVersion = baseType.lowercased() == "timestamp" || baseType.lowercased() == "rowversion"
@@ -1156,6 +1164,7 @@ public extension SQLServerDriver {
                 ),
                 baseType: baseType,
                 isUserDefined: isUserDefined,
+                isAssemblyType: isAssemblyType,
                 typeSchema: typeSchema,
                 maxLength: maxLength,
                 precision: precision,
@@ -1567,7 +1576,9 @@ public extension SQLServerDriver {
                     continue
                 }
                 let base = column.baseType.lowercased()
-                if ["sql_variant", "hierarchyid", "geometry", "geography", "vector", "json"].contains(base) {
+                if column.isAssemblyType {
+                    unsupported.append("\(table.displayName).\(column.name) (tipo CLR \(base))")
+                } else if ["sql_variant", "hierarchyid", "geometry", "geography", "vector", "json"].contains(base) {
                     unsupported.append("\(table.displayName).\(column.name) (\(base))")
                 }
             }
@@ -1783,22 +1794,22 @@ public extension SQLServerDriver {
                 switch module.type {
                 case "V":
                     writer.appendLine(
-                        "IF OBJECT_ID(N'\(module.schema).\(module.name)', N'V') IS NOT NULL " +
+                        "IF OBJECT_ID(N'\(LogicalSQL.objectPath(module.schema, module.name))', N'V') IS NOT NULL " +
                         "DROP VIEW \(module.qualified);"
                     )
                 case "P":
                     writer.appendLine(
-                        "IF OBJECT_ID(N'\(module.schema).\(module.name)', N'P') IS NOT NULL " +
+                        "IF OBJECT_ID(N'\(LogicalSQL.objectPath(module.schema, module.name))', N'P') IS NOT NULL " +
                         "DROP PROCEDURE \(module.qualified);"
                     )
                 case "FN", "IF", "TF":
                     writer.appendLine(
-                        "IF OBJECT_ID(N'\(module.schema).\(module.name)') IS NOT NULL " +
+                        "IF OBJECT_ID(N'\(LogicalSQL.objectPath(module.schema, module.name))') IS NOT NULL " +
                         "DROP FUNCTION \(module.qualified);"
                     )
                 case "TR":
                     writer.appendLine(
-                        "IF OBJECT_ID(N'\(module.schema).\(module.name)', N'TR') IS NOT NULL " +
+                        "IF OBJECT_ID(N'\(LogicalSQL.objectPath(module.schema, module.name))', N'TR') IS NOT NULL " +
                         "DROP TRIGGER \(module.qualified);"
                     )
                 default:
@@ -1807,7 +1818,7 @@ public extension SQLServerDriver {
             }
             for synonym in catalog.synonyms.reversed() {
                 writer.appendLine(
-                    "IF OBJECT_ID(N'\(synonym.schema).\(synonym.name)', N'SN') IS NOT NULL " +
+                    "IF OBJECT_ID(N'\(LogicalSQL.objectPath(synonym.schema, synonym.name))', N'SN') IS NOT NULL " +
                     "DROP SYNONYM \(LogicalSQL.quote(schema: synonym.schema, name: synonym.name));"
                 )
             }
@@ -1816,7 +1827,7 @@ public extension SQLServerDriver {
         let foreignKeys = includedForeignKeys(catalog)
         for fk in foreignKeys {
             writer.appendLine(
-                "IF OBJECT_ID(N'\(fk.parentSchema).\(fk.name)', N'F') IS NOT NULL " +
+                "IF OBJECT_ID(N'\(LogicalSQL.objectPath(fk.parentSchema, fk.name))', N'F') IS NOT NULL " +
                 "ALTER TABLE \(fk.parentQualified) DROP CONSTRAINT \(LogicalSQL.quote(fk.name));"
             )
         }

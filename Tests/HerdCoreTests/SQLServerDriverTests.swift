@@ -620,6 +620,41 @@ final class SQLServerDriverTests: XCTestCase {
         XCTAssertEqual(after.rows, [["42"]])
     }
 
+    func testLogicalBackupRejectsUnsupportedColumnType() async throws {
+        let driver = try makeDriver()
+        addTeardownBlock { await driver.shutdown() }
+
+        let suffix = UUID().uuidString.prefix(8).lowercased()
+        let source = "herd_unsup_\(suffix)"
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("herd-unsup-\(suffix)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let backupURL = directory.appendingPathComponent("backup.sql")
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: directory)
+            await driver.shutdown()
+            _ = try? await driver.run(
+                "ALTER DATABASE [\(source)] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [\(source)];",
+                database: "master"
+            )
+        }
+
+        _ = try await driver.run("CREATE DATABASE [\(source)];", database: "master")
+        _ = try await driver.run("CREATE SCHEMA [app];", database: source)
+        _ = try await driver.run(
+            "CREATE TABLE [app].[variants] (id int PRIMARY KEY, value sql_variant NULL);",
+            database: source
+        )
+
+        do {
+            _ = try await driver.exportLogicalBackup(database: source, to: backupURL)
+            XCTFail("O backup deveria recusar sql_variant.")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("sql_variant"), error.localizedDescription)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backupURL.path))
+    }
+
     // MARK: - Helpers
 
     private func makeDriver() throws -> SQLServerDriver {
