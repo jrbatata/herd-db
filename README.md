@@ -4,7 +4,7 @@
 
 <h1 align="center">herd</h1>
 <p align="center"><strong>Seus bancos de dados, com a leveza do Mac.</strong></p>
-<p align="center">Explore schemas, escreva SQL com autocomplete e edite dados inline em um cliente PostgreSQL 100% nativo.</p>
+<p align="center">Explore schemas, escreva SQL com autocomplete e edite dados inline em um cliente PostgreSQL e SQL Server 100% nativo.</p>
 <p align="center">Nativo para macOS (SwiftUI + AppKit) &nbsp;·&nbsp; Interface em português &nbsp;·&nbsp; Senhas no Chaveiro</p>
 
 ![Visão geral sanitizada do Herd com editor SQL e grid de resultados usando dados de demonstração](docs/screenshots/visao-geral.png)
@@ -20,12 +20,12 @@ Dê dois cliques em uma tabela para abrir seus dados paginados ou abra quantas a
 | A estrutura do banco    | Árvore sob demanda, filtro instantâneo (`⇧⌘F`), inspetor de DDL (`⌘I`) e wizards nativos de criação.   |
 | Consultas e scripts SQL | Editor `NSTextView` com realce de sintaxe, formatação (`⇧⌥F`), snippets e autocomplete (`⌥Space`).     |
 | Os dados da tabela      | Edição inline com duplo clique, adição/remoção de linhas, revisão do SQL gerado e commit em transação. |
-| Rotinas de operação     | Backup e restore via `pg_dump`/`pg_restore`/`psql` e importação/exportação de CSV com log ao vivo.     |
+| Rotinas de operação     | Backup e restore PostgreSQL via `pg_dump`/`pg_restore`/`psql` e importação/exportação de CSV com log ao vivo. |
 | Segurança e privacidade | Credenciais guardadas no Chaveiro do macOS, conexões locais em JSON (`0600`) e zero telemetria.        |
 
 ## Escreva SQL, edite dados e revise antes de aplicar
 
-O editor SQL executa o script inteiro, apenas o trecho selecionado ou o comando sob o cursor (`⌘↵`, `⇧⌘↵`, `⌥⌘↵`), com cancelamento real no servidor via `pg_cancel_backend` (`⌘.`). Quando um script retorna várias consultas, cada conjunto aparece em seu próprio painel redimensionável.
+O editor SQL executa o script inteiro, apenas o trecho selecionado ou o comando sob o cursor (`⌘↵`, `⇧⌘↵`, `⌥⌘↵`), com cancelamento real no servidor — `pg_cancel_backend` no PostgreSQL e encerramento da conexão ativa no SQL Server (`⌘.`). Quando um script retorna várias consultas, cada conjunto aparece em seu próprio painel redimensionável.
 
 No grid de resultados, dê dois cliques em qualquer célula para editar o valor na hora, adicione novas linhas no final navegando com `Tab` e `Enter`, ou selecione intervalos inteiros com `Shift`. Antes de gravar no banco, você pode revisar os comandos `INSERT`, `UPDATE` e `DELETE` gerados e aplicá-los em uma única transação.
 
@@ -41,7 +41,7 @@ Cadastre servidores locais ou remotos em segundos, teste a conexão antes de sal
 
 ## Roadmap
 
-**Estado:** fases 1, 2, 3, 4, 5 e 7 concluídas; fase 6 em standby; fase 8 em polimento final; fase 9 em desenvolvimento, com Safe Mode concluído e Abrir Qualquer Coisa ainda em construção; fase 10 (diagrama ER) futura.
+**Estado:** fases 1, 2, 3, 4, 5 e 7 concluídas; fase 6 com consultas e catálogo do SQL Server entregues (DDL e backup pendentes); fase 8 em polimento final; fase 9 em desenvolvimento, com Safe Mode concluído e Abrir Qualquer Coisa ainda em construção; fase 10 (diagrama ER) futura.
 
 | Fase | Escopo                                             | Status             |
 | ---- | -------------------------------------------------- | ------------------ |
@@ -50,7 +50,7 @@ Cadastre servidores locais ou remotos em segundos, teste a conexão antes de sal
 | 3    | Autocomplete, snippets e scripts SQL               | ✅ Concluída       |
 | 4    | Grid de dados, ações do editor SQL e menus nativos | ✅ Concluída       |
 | 5    | Structure/DDL                                      | ✅ Concluída       |
-| 6    | FreeTDS + SQL Server                               | ⏸️ Standby         |
+| 6    | SQL Server (TDS em Swift)                          | ✅ Consultas e catálogo |
 | 7    | Backup/restore, novo banco e geração de scripts    | ✅ Concluída       |
 | 8    | Polimento, acessibilidade e empacotamento          | 🚧 Polimento final |
 | 9    | Safe Mode, ⌘P, console de log, processos, filtros e I/O | 🚧 Em desenvolvimento |
@@ -62,7 +62,7 @@ As capturas abaixo usam exclusivamente uma base fictícia (`herd_demo`), nomes g
 
 ### 1. Conecte com segurança e explore sem atrito
 
-A fundação do Herd já está pronta: cliente PostgreSQL nativo, conexões protegidas pelo Chaveiro do macOS e navegação sob demanda por bancos, schemas, tabelas, views e colunas.
+A fundação do Herd já está pronta: clientes PostgreSQL e SQL Server nativos, conexões protegidas pelo Chaveiro do macOS e navegação sob demanda por bancos, schemas, tabelas, views e colunas.
 
 ![Formulário de conexão PostgreSQL com host local e usuário fictício](docs/screenshots/conexoes.png)
 
@@ -90,9 +90,9 @@ Structure/DDL reúne colunas, índices e constraints, gera o `CREATE TABLE` comp
 
 ![Consulta e grid da base de demonstração usados como ponto de entrada para Structure e DDL](docs/screenshots/visao-geral.png)
 
-### 6. SQL Server — em standby
+### 6. SQL Server — consultas e catálogo
 
-A integração via FreeTDS continua no roadmap. Como ainda não existe uma experiência concluída para demonstrar, esta fase não usa captura de tela nem antecipa uma interface que o produto ainda não entrega.
+O SQL Server conecta pelo protocolo TDS 7.4 em Swift puro (CosmoMSSQL), sem FreeTDS nem ODBC instalado. Login SQL, TLS opcional e certificados autoassinados são configuráveis no formulário de conexão. Navegação por bancos, schemas, tabelas, views e rotinas, execução de scripts, resultados e autocomplete funcionam como no PostgreSQL; DDL, backup e processos seguem específicos do PostgreSQL e ficam ocultos nas conexões SQL Server. Autenticação Windows/NTLM e Entra ID ainda não são suportadas.
 
 ### 7. Operações de banco sem sair do Herd
 
@@ -196,18 +196,20 @@ O diagrama entidade-relacionamento será construído sobre as PKs e FKs que o He
 - [x] Alterações via preview e execução de `ALTER TABLE` + wizards nativos (`CreateTableSheet`, `CreateSchemaSheet`, `CreateTableSubObjectSheet`, `DropObjectSheet`)
 - [x] Atalho `⌘I`
 
-### Fase 6 — SQL Server ⏸️ (Standby)
+### Fase 6 — SQL Server ✅ (consultas e catálogo)
 
-- [ ] FreeTDS (dblib) compilado como xcframework e embutido no `.app`
-- [ ] `MSSQLDriver` async com pool e cancelamento
-- [ ] Dialeto `[x]`/`TOP` e catálogos do SQL Server
-- [ ] Paridade: árvore, abas, execução, resultados e histórico
-- [ ] Testes contra SQL Server em Docker
+- [x] TDS 7.4 em Swift puro via CosmoMSSQL (sem FreeTDS/ODBC)
+- [x] `SQLServerDriver` async com pool por banco e cancelamento
+- [x] Dialeto `[x]`/`TOP` e catálogos do SQL Server
+- [x] Paridade: árvore, abas, execução, resultados, autocomplete e histórico
+- [x] Testes de integração contra SQL Server em Docker
+- [ ] Autenticação Windows/NTLM e Microsoft Entra ID
+- [ ] Wizards de DDL, backup e restore específicos do SQL Server
 
 ### Fase 7 — Backup, restore, novo banco e scripts ✅
 
 - [x] Backup/restore PostgreSQL com `pg_dump`/`pg_restore`/`psql` (`.dump` e `.sql`), progresso e log na aba **Processos**
-- [ ] Backup/restore SQL Server via `BACKUP DATABASE`/`RESTORE DATABASE` (em standby junto com a Fase 6)
+- [ ] Backup/restore SQL Server via `BACKUP DATABASE`/`RESTORE DATABASE` (pendente)
 - [x] Novo banco pela interface (`CreateDatabaseSheet` / `⌥⌘D`)
 - [x] Gerar script CREATE/INSERT/UPDATE/DELETE/SELECT pelo menu da tabela
 - [x] Copiar nome do objeto (`⌥⌘C`) e atualizar nó (`⌘R`)
