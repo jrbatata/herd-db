@@ -102,6 +102,18 @@ struct ConnectionSheet: View {
                             .help(showPassword ? "Ocultar senha" : "Mostrar senha")
                         }
                     }
+                    if config.engine == .sqlServer {
+                        Divider()
+                        HStack(alignment: .top, spacing: 7) {
+                            Icon(.warning, size: 13)
+                                .foregroundStyle(.orange)
+                            Text("Use um login SQL (ex.: sa). Autenticação do Windows (DOMÍNIO\\usuário) ainda não é suportada.")
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.vertical, 9)
+                    }
                 }
 
                 group("Segurança") {
@@ -170,16 +182,6 @@ struct ConnectionSheet: View {
                     }
                 }
                 .padding(.leading, 4)
-
-                if config.engine == .sqlServer {
-                    Label {
-                        Text("Autenticação SQL com usuário e senha. Windows/NTLM ainda não é suportado.")
-                    } icon: {
-                        Icon(.info, size: 14)
-                    }
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
-                }
             }
             .padding(.horizontal, 22)
 

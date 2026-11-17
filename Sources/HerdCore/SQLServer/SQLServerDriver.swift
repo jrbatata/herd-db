@@ -457,7 +457,13 @@ public actor SQLServerDriver: DatabaseDriver {
     private static func describe(_ error: Error) -> String {
         if let error = error as? SQLError {
             switch error {
-            case .serverError(_, let message, _):
+            case .serverError(let code, let message, _):
+                if code == 18456 {
+                    return """
+                        Login recusado pelo SQL Server. Confira usuário e senha e se o servidor aceita “SQL Server Authentication”. \
+                        Contas do Windows (DOMÍNIO\\usuário) usam NTLM, que o herd ainda não suporta.
+                        """
+                }
                 return message.isEmpty ? error.description : message
             case .connectionError(let message),
                  .tlsError(let message),
