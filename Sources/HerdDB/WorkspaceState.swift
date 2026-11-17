@@ -107,6 +107,8 @@ final class WorkspaceState {
     }
 
     func openProcesses() {
+        guard let config = activeTab.flatMap({ app.connections.connection(id: $0.connectionID) }),
+              postgresOnly(config, feature: "Ver processos") else { return }
         processes.visible = true
         activeTabID = processesTabID
     }
@@ -250,7 +252,11 @@ final class WorkspaceState {
         guard let config = app.connections.connection(id: connectionID) else { return }
         let dialect = engineDialect(config.engine)
         let qualified = dialect.qualify(schema: schema, table: name)
-        let sql = isProcedure ? "CALL \(qualified)(...);" : "SELECT \(qualified)(...);"
+        let sql = if config.engine == .sqlServer {
+            isProcedure ? "EXEC \(qualified) ...;" : "SELECT \(qualified)(...);"
+        } else {
+            isProcedure ? "CALL \(qualified)(...);" : "SELECT \(qualified)(...);"
+        }
         let context = QueryContext(
             connectionID: connectionID,
             connectionName: config.name,
@@ -312,7 +318,12 @@ final class WorkspaceState {
         let target = dialect.qualify(schema: refSchema, table: refTable)
         let quotedCol = dialect.quote(refColumn)
         let escapedVal = value.replacingOccurrences(of: "'", with: "''")
-        let sql = "SELECT *\nFROM \(target)\nWHERE \(quotedCol) = '\(escapedVal)'\nLIMIT 500;"
+        let sql: String
+        if config.engine == .sqlServer {
+            sql = "SELECT TOP 500 *\nFROM \(target)\nWHERE \(quotedCol) = N'\(escapedVal)';"
+        } else {
+            sql = "SELECT *\nFROM \(target)\nWHERE \(quotedCol) = '\(escapedVal)'\nLIMIT 500;"
+        }
         let context = QueryContext(
             connectionID: config.id,
             connectionName: config.name,
@@ -355,6 +366,13 @@ final class WorkspaceState {
                                    database: database,
                                    schema: node.schema)
         newQueryTab(context: context, sql: sql, title: title)
+    }
+
+    var canShowTableStructure: Bool {
+        guard let node = selectedNode,
+              node.kind == .table,
+              let config = app.connections.connection(id: node.connectionID) else { return false }
+        return config.engine == .postgres
     }
 
     func canCreate(_ object: NewDBObject) -> Bool {
@@ -400,7 +418,18 @@ final class WorkspaceState {
         }
     }
 
+    /// Recursos que geram SQL específico do PostgreSQL ficam ocultos no SQL Server.
+    private func postgresOnly(_ config: ConnectionConfig, feature: String) -> Bool {
+        guard config.engine != .postgres else { return true }
+        alert = AlertMessage(
+            title: "\(feature) indisponível no SQL Server",
+            message: "Esse recurso é específico do PostgreSQL. Em conexões SQL Server, use o editor SQL."
+        )
+        return false
+    }
+
     func presentCreateDatabase(for config: ConnectionConfig) {
+        guard postgresOnly(config, feature: "Criar banco de dados") else { return }
         databaseWizard = DatabaseWizardState(
             connectionID: config.id,
             connectionName: config.name,
@@ -414,7 +443,8 @@ final class WorkspaceState {
               target.kind == .table,
               let config = app.connections.connection(id: target.connectionID),
               let database = target.database,
-              let table = target.table else { return }
+              let table = target.table,
+              postgresOnly(config, feature: "Estrutura da tabela") else { return }
         tableStructure = TableStructureState(
             connectionID: config.id,
             connectionName: config.name,
@@ -455,7 +485,8 @@ final class WorkspaceState {
 
     func presentCreateTable(for node: TreeNode? = nil) {
         guard let target = node ?? selectedNode,
-              let config = app.connections.connection(id: target.connectionID) else { return }
+              let config = app.connections.connection(id: target.connectionID),
+              postgresOnly(config, feature: "Criar tabela") else { return }
         let database = target.database ?? config.maintenanceDatabase
         let defaultSchema = (target.kind == .schema ? target.title : target.schema) ?? "public"
         tableWizard = TableWizardState(
@@ -470,7 +501,8 @@ final class WorkspaceState {
 
     func presentCreateSchema(for node: TreeNode? = nil) {
         guard let target = node ?? selectedNode,
-              let config = app.connections.connection(id: target.connectionID) else { return }
+              let config = app.connections.connection(id: target.connectionID),
+              postgresOnly(config, feature: "Criar schema") else { return }
         let database = target.database ?? config.maintenanceDatabase
         schemaWizard = SchemaWizardState(
             connectionID: config.id,
@@ -483,7 +515,8 @@ final class WorkspaceState {
 
     func presentBackup(for node: TreeNode) {
         guard node.kind == .database || node.kind == .table,
-              let config = app.connections.connection(id: node.connectionID) else { return }
+              let config = app.connections.connection(id: node.connectionID),
+              postgresOnly(config, feature: "Backup") else { return }
         backupWizard = BackupWizardState(
             node: node,
             connectionName: config.name,
@@ -497,7 +530,8 @@ final class WorkspaceState {
     func presentRestore(for node: TreeNode) {
         guard node.kind == .database,
               let config = app.connections.connection(id: node.connectionID),
-              let database = node.database else { return }
+              let database = node.database,
+              postgresOnly(config, feature: "Restore") else { return }
         restoreWizard = RestoreWizardState(
             node: node,
             connectionName: config.name,
@@ -506,7 +540,8 @@ final class WorkspaceState {
     }
 
     func presentDropObject(for node: TreeNode, force: Bool = false) {
-        guard let config = app.connections.connection(id: node.connectionID) else { return }
+        guard let config = app.connections.connection(id: node.connectionID),
+              postgresOnly(config, feature: "Excluir objeto") else { return }
         let database = node.database ?? config.maintenanceDatabase
         let kind: DropWizardState.ObjectKind
         switch node.kind {

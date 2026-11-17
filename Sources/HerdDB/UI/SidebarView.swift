@@ -152,6 +152,10 @@ struct TreeRowView: View {
     private var isSelected: Bool {
         node.isSelectable && (tree.selectedIDs.contains(node.id) || tree.selection == node.id)
     }
+    /// Recursos de DDL, backup e processos ainda são específicos do PostgreSQL.
+    private var isPostgres: Bool {
+        workspace.app.connections.connection(id: node.connectionID)?.engine == .postgres
+    }
 
     var body: some View {
         HStack(spacing: 5) {
@@ -296,8 +300,10 @@ struct TreeRowView: View {
             if let config = workspace.app.connections.connection(id: node.connectionID) {
                 Button("Novo script") { workspace.newQueryTab(for: config) }
                     .keyboardShortcut("t", modifiers: .command)
-                Button("Criar banco de dados…") { workspace.presentCreateDatabase(for: config) }
-                    .keyboardShortcut("d", modifiers: [.command, .option])
+                if isPostgres {
+                    Button("Criar banco de dados…") { workspace.presentCreateDatabase(for: config) }
+                        .keyboardShortcut("d", modifiers: [.command, .option])
+                }
                 Button("Editar conexão…") { workspace.presentEditConnection(config) }
                     .keyboardShortcut("e", modifiers: .command)
                 Divider()
@@ -311,7 +317,7 @@ struct TreeRowView: View {
         case .table, .view:
             Button("Abrir dados") { workspace.openTable(node) }
                 .keyboardShortcut(.return, modifiers: [])
-            if node.kind == .table {
+            if node.kind == .table, isPostgres {
                 Button("Estrutura / DDL…") { workspace.presentTableStructure(for: node) }
                     .keyboardShortcut("i", modifiers: .command)
             }
@@ -332,7 +338,7 @@ struct TreeRowView: View {
                     .keyboardShortcut("6", modifiers: [.command, .option, .shift])
                 }
             }
-            if node.kind == .table {
+            if node.kind == .table, isPostgres {
                 Menu("Criar") {
                     Button("Tabela…") { workspace.presentCreateTable(for: node) }
                         .keyboardShortcut("n", modifiers: [.command, .option])
@@ -350,18 +356,20 @@ struct TreeRowView: View {
                     Button("Política RLS…") { workspace.create(.policy, for: node) }
                         .keyboardShortcut("y", modifiers: [.command, .option])
                 }
-            } else {
+            } else if isPostgres {
                 Button("Criar tabela…") { workspace.presentCreateTable(for: node) }
                     .keyboardShortcut("n", modifiers: [.command, .option])
             }
-            Button("Excluir…", role: .destructive) { workspace.presentDropObject(for: node) }
-                .keyboardShortcut(.delete, modifiers: .command)
-            Button("Excluir em cascata…", role: .destructive) { workspace.presentDropObject(for: node, force: true) }
-                .keyboardShortcut(.delete, modifiers: [.command, .option])
-            Divider()
-            Button("Backup…") { workspace.presentBackup(for: node) }
-                .keyboardShortcut("b", modifiers: [.command, .shift])
-            if node.kind == .table {
+            if isPostgres {
+                Button("Excluir…", role: .destructive) { workspace.presentDropObject(for: node) }
+                    .keyboardShortcut(.delete, modifiers: .command)
+                Button("Excluir em cascata…", role: .destructive) { workspace.presentDropObject(for: node, force: true) }
+                    .keyboardShortcut(.delete, modifiers: [.command, .option])
+                Divider()
+                Button("Backup…") { workspace.presentBackup(for: node) }
+                    .keyboardShortcut("b", modifiers: [.command, .shift])
+            }
+            if node.kind == .table, isPostgres {
                 Menu("Importar/Exportar CSV") {
                     Button("Importar CSV…") { workspace.processes.transferCSV(node, connections: workspace.app.connections, importing: true) }
                         .keyboardShortcut("i", modifiers: [.command, .shift])
@@ -369,8 +377,10 @@ struct TreeRowView: View {
                         .keyboardShortcut("e", modifiers: [.command, .shift])
                 }
             }
-            Button("Ver processos…") { workspace.openProcesses() }
-                .keyboardShortcut("p", modifiers: [.command, .option])
+            if isPostgres {
+                Button("Ver processos…") { workspace.openProcesses() }
+                    .keyboardShortcut("p", modifiers: [.command, .option])
+            }
             Divider()
             Button("Copiar nome") { copy(node.title) }
                 .keyboardShortcut("c", modifiers: [.command, .option])
@@ -380,7 +390,7 @@ struct TreeRowView: View {
         case .database, .schema, .tablesFolder, .viewsFolder, .routinesFolder:
             Button("Novo script") { workspace.newQueryTab(for: node) }
                 .keyboardShortcut("t", modifiers: .command)
-            if node.kind == .database || node.kind == .schema || node.kind == .tablesFolder {
+            if isPostgres, node.kind == .database || node.kind == .schema || node.kind == .tablesFolder {
                 Menu("Criar") {
                     if let config = workspace.app.connections.connection(id: node.connectionID) {
                         Button("Banco de dados…") { workspace.presentCreateDatabase(for: config) }
@@ -393,7 +403,7 @@ struct TreeRowView: View {
                         .keyboardShortcut("s", modifiers: [.command, .option])
                 }
             }
-            if node.kind == .database || node.kind == .schema {
+            if isPostgres, node.kind == .database || node.kind == .schema {
                 Button("Excluir…", role: .destructive) { workspace.presentDropObject(for: node) }
                     .keyboardShortcut(.delete, modifiers: .command)
                 Button(node.kind == .database ? "Excluir forçando desconexão…" : "Excluir em cascata…", role: .destructive) {
@@ -401,7 +411,7 @@ struct TreeRowView: View {
                 }
                 .keyboardShortcut(.delete, modifiers: [.command, .option])
             }
-            if node.kind == .database {
+            if isPostgres, node.kind == .database {
                 Divider()
                 Button("Backup…") { workspace.presentBackup(for: node) }
                     .keyboardShortcut("b", modifiers: [.command, .shift])

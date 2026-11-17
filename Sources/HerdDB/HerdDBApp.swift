@@ -225,7 +225,7 @@ struct HerdCommands: Commands {
                 workspace?.presentTableStructure()
             }
             .keyboardShortcut("i", modifiers: .command)
-            .disabled(workspace?.selectedNode?.kind != .table)
+            .disabled(workspace?.canShowTableStructure != true)
 
             Button("Atualizar árvore") {
                 workspace?.tree.reloadAll()

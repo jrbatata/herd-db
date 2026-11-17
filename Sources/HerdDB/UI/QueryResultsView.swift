@@ -11,6 +11,7 @@ struct QueryResultsView: View {
     var tableSortDescending = false
     var sourceTable: String? = nil
     var schema: String? = nil
+    var dialect: SQLDialect = .postgres
     var onBrowsePage: ((Int) -> Void)? = nil
     var onApplyFilter: ((String) -> Void)? = nil
     var onSort: ((String) -> Void)? = nil
@@ -83,6 +84,7 @@ struct QueryResultsView: View {
                     tableSortDescending: tableSortDescending,
                     sourceTable: sourceTable,
                     schema: schema,
+                    dialect: dialect,
                     onBrowsePage: onBrowsePage,
                     onApplyFilter: onApplyFilter,
                     onSort: onSort,
@@ -235,6 +237,7 @@ private struct ResultTable: View {
     let tableSortDescending: Bool
     let sourceTable: String?
     let schema: String?
+    let dialect: SQLDialect
     let onBrowsePage: ((Int) -> Void)?
     let onApplyFilter: ((String) -> Void)?
     let onSort: ((String) -> Void)?
@@ -275,6 +278,7 @@ private struct ResultTable: View {
         tableSortDescending: Bool = false,
         sourceTable: String? = nil,
         schema: String? = nil,
+        dialect: SQLDialect = .postgres,
         onBrowsePage: ((Int) -> Void)? = nil,
         onApplyFilter: ((String) -> Void)? = nil,
         onSort: ((String) -> Void)? = nil,
@@ -289,6 +293,7 @@ private struct ResultTable: View {
         self.tableSortDescending = tableSortDescending
         self.sourceTable = sourceTable
         self.schema = schema
+        self.dialect = dialect
         self.onBrowsePage = onBrowsePage
         self.onApplyFilter = onApplyFilter
         self.onSort = onSort
@@ -811,7 +816,8 @@ private struct ResultTable: View {
     private func sqlLiteral(_ value: String?) -> String {
         guard let value else { return "NULL" }
         let escaped = value.replacingOccurrences(of: "'", with: "''")
-        return "'\(escaped)'"
+        let prefix = dialect.family == .sqlServer ? "N" : ""
+        return "\(prefix)'\(escaped)'"
     }
 
     private func whereClause(for originalRow: [String?], dialect: SQLDialect) -> String {
@@ -837,8 +843,8 @@ private struct ResultTable: View {
 
     private func generateSQLStatements() -> [String] {
         guard let sourceTable else { return [] }
-        let dialect = SQLDialect.postgres
-        let target = dialect.qualify(schema: schema ?? "public", table: sourceTable)
+        let dialect = self.dialect
+        let target = dialect.qualify(schema: schema ?? (dialect.family == .sqlServer ? "dbo" : "public"), table: sourceTable)
         var statements: [String] = []
 
         // 1. DELETEs

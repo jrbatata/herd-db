@@ -225,6 +225,10 @@ struct QueryTabView: View {
         }
     }
 
+    private var dialect: SQLDialect {
+        app.connections.connection(id: tab.connectionID)?.engine == .sqlServer ? .sqlServer : .postgres
+    }
+
     private var databaseOptions: [String] {
         var names = databases
         if !names.contains(tab.database) {
@@ -325,6 +329,7 @@ struct QueryTabView: View {
             tableSortDescending: tab.tableSortDescending,
             sourceTable: tab.sourceTable,
             schema: tab.schema,
+            dialect: dialect,
             onBrowsePage: tab.tablePage == nil ? nil : { page in
                 tab.browseTable(app: app, page: page)
             },
@@ -349,7 +354,8 @@ struct QueryTabView: View {
                     throw CancellationError()
                 }
                 let driver = app.drivers.driver(for: config)
-                let txSQL = (["BEGIN;"] + statements + ["COMMIT;"]).joined(separator: "\n")
+                let begin = config.engine == .sqlServer ? "BEGIN TRANSACTION;" : "BEGIN;"
+                let txSQL = ([begin] + statements + ["COMMIT;"]).joined(separator: "\n")
                 _ = try await driver.run(txSQL, database: tab.database, source: .commit)
                 let currentPage = tab.tablePage?.page ?? 0
                 tab.browseTable(app: app, page: currentPage)
