@@ -958,7 +958,7 @@ struct SQLServerRestoreSheet: View {
             Icon(.info, size: 15, solid: true)
                 .foregroundStyle(.secondary)
             Text(mode == .local
-                 ? "O script é executado lote a lote no banco de destino. O login precisa de permissão para criar objetos (db_owner ou equivalente). Para um banco novo, o herd pode criá-lo antes."
+                 ? "O script é executado lote a lote no banco de destino. O login precisa de permissão para criar objetos (db_owner ou equivalente). Criar um banco novo exige dbcreator."
                  : "O restore lê o .bak do disco do servidor. Os caminhos físicos dos arquivos .mdf/.ldf também precisam existir na máquina do SQL Server. O login precisa de permissão de restore (dbcreator ou sysadmin).")
                 .font(.system(size: 11.5))
                 .foregroundStyle(.secondary)
