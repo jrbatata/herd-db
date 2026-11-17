@@ -26,19 +26,19 @@ O herd reúne árvore de objetos, editor e resultados em uma janela rápida e si
 
 Sem conta na nuvem. Sem telemetria. Só o seu Mac falando diretamente com o seu banco.
 
-| Nativo de verdade | Do schema ao dado | Privado por padrão |
-| :-- | :-- | :-- |
+| Nativo de verdade                                                                     | Do schema ao dado                                                                | Privado por padrão                                               |
+| :------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------- | :--------------------------------------------------------------- |
 | Um app leve, com tema claro e escuro, menus do sistema e atalhos que você já conhece. | Navegue pela estrutura, consulte, edite células e revise o SQL antes de aplicar. | Suas senhas ficam no Chaveiro e as conexões não saem do seu Mac. |
 
 ## Tudo à mão, sem sair do fluxo
 
-| Para trabalhar com…     | O herd resolve com…                                                                              |
-| :---------------------- | :----------------------------------------------------------------------------------------------- |
-| A estrutura do banco    | Árvore sob demanda, filtro instantâneo, visualização da estrutura e assistentes de criação.      |
-| Consultas e scripts SQL | Editor com realce de sintaxe, formatação, snippets e sugestões enquanto você digita.             |
+| Para trabalhar com…     | O herd resolve com…                                                                             |
+| :---------------------- | :---------------------------------------------------------------------------------------------- |
+| A estrutura do banco    | Árvore sob demanda, filtro instantâneo, visualização da estrutura e assistentes de criação.     |
+| Consultas e scripts SQL | Editor com realce de sintaxe, formatação, snippets e sugestões enquanto você digita.            |
 | Os dados da tabela      | Edição direta na célula, inclusão e remoção de linhas, revisão do SQL e aplicação em transação. |
-| Rotinas de operação     | Backup e restore, cópia de segurança salva no Mac e importação/exportação de CSV.                |
-| Segurança e privacidade | Senhas no Chaveiro, Safe Mode por conexão e destaque visual de ambientes de produção.            |
+| Rotinas de operação     | Backup e restore, cópia de segurança salva no Mac e importação/exportação de CSV.               |
+| Segurança e privacidade | Senhas no Chaveiro, Safe Mode por conexão e destaque visual de ambientes de produção.           |
 
 ## Escreva SQL. Edite dados. Revise antes de aplicar.
 
@@ -62,10 +62,10 @@ Cadastre servidores locais ou remotos em segundos, teste a conexão antes de sal
 
 No PostgreSQL e no SQL Server, o herd conduz o backup e o restore pela interface, com progresso e aviso ao terminar. No SQL Server, você escolhe onde guardar:
 
-| Formato | Onde fica | Indicado para |
-| :--- | :--- | :--- |
-| **Script SQL** | No seu Mac | Levar o banco para outro servidor, versionar ou abrir o conteúdo. |
-| **Backup do servidor** | No servidor | Rotina de backup do próprio servidor, cópia completa e rápida. |
+| Formato                | Onde fica   | Indicado para                                                     |
+| :--------------------- | :---------- | :---------------------------------------------------------------- |
+| **Script SQL**         | No seu Mac  | Levar o banco para outro servidor, versionar ou abrir o conteúdo. |
+| **Backup do servidor** | No servidor | Rotina de backup do próprio servidor, cópia completa e rápida.    |
 
 O script SQL inclui a estrutura, os dados e os objetos programáveis do banco. O restore recria tudo no destino e pode criar o banco automaticamente. Também é possível fazer backup de uma tabela específica, sem levar o resto do banco.
 
@@ -83,15 +83,6 @@ Escolha, por conexão, como o herd deve se comportar antes de executar algo sens
 
 Tema claro e escuro, menus de contexto do sistema, atalhos no padrão do macOS e do VS Code, estados vazios e de erro cuidados e um app que se instala como qualquer programa do Mac. O herd se comporta como parte do sistema — não como um site dentro de uma janela.
 
-## Status
-
-O herd está em desenvolvimento ativo. O dia a dia com PostgreSQL já está completo: consultas, estrutura, edição, backup e restore. O SQL Server cobre conexão, navegação, consultas, edição e backup/restore. Safe Mode e a busca global (`⌘P`) estão entre os recursos mais recentes.
-
-O plano completo, fase por fase, fica em **[docs/ROADMAP.md](docs/ROADMAP.md)**.
-
-## Documentação
-
-- [Roadmap e plano de implementação](docs/ROADMAP.md)
 - [Atalhos de teclado](docs/ATALHOS.md)
 
 ---
