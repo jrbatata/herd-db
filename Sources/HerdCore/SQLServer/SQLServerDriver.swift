@@ -372,7 +372,8 @@ public actor SQLServerDriver: DatabaseDriver {
 
     public func browseTable(database: String, schema: String?, table: String,
                             page: Int, pageSize: Int, filter: String,
-                            sortColumn: String?, descending: Bool) async throws -> TablePage {
+                            sortColumn: String?, descending: Bool,
+                            columnFilters: [ColumnFilter] = []) async throws -> TablePage {
         let schemaName = schema ?? "dbo"
         let columns = try await listColumns(database: database, schema: schemaName, table: table)
         let target = dialect.qualify(schema: schemaName, table: table)
@@ -382,11 +383,49 @@ public actor SQLServerDriver: DatabaseDriver {
         guard !offset.overflow else { throw HerdError.queryFailed("Página fora do intervalo.") }
 
         // Escaping the literal keeps arbitrary search text out of the SQL syntax.
-        let escaped = filter.replacingOccurrences(of: "'", with: "''")
-        let terms = columns.map {
-            "CHARINDEX(N'\(escaped)', CONVERT(nvarchar(max), \(dialect.quote($0.name)))) > 0"
+        func literal(_ value: String) -> String {
+            "N'\(value.replacingOccurrences(of: "'", with: "''"))'"
         }
-        let predicate = filter.isEmpty || terms.isEmpty ? "" : " WHERE " + terms.joined(separator: " OR ")
+
+        var predicates: [String] = []
+        if !filter.isEmpty {
+            let value = literal(filter)
+            let terms = columns.map {
+                "CHARINDEX(\(value), CONVERT(nvarchar(max), \(dialect.quote($0.name)))) > 0"
+            }
+            if !terms.isEmpty {
+                predicates.append("(" + terms.joined(separator: " OR ") + ")")
+            }
+        }
+
+        for item in columnFilters {
+            guard columns.contains(where: { $0.name == item.column }) else { continue }
+            let column = dialect.quote(item.column)
+            let text = "CONVERT(nvarchar(max), \(column))"
+            let value = literal(item.value)
+            let clause: String
+            switch item.operation {
+            case .contains:
+                clause = "CHARINDEX(\(value), \(text)) > 0"
+            case .notContains:
+                clause = "(\(column) IS NULL OR CHARINDEX(\(value), \(text)) = 0)"
+            case .equals:
+                clause = "LOWER(\(text)) = LOWER(\(value))"
+            case .notEquals:
+                clause = "(\(column) IS NULL OR LOWER(\(text)) <> LOWER(\(value)))"
+            case .startsWith:
+                clause = "CHARINDEX(\(value), \(text)) = 1"
+            case .endsWith:
+                clause = "(\(text) IS NOT NULL AND LEN(\(text)) >= LEN(\(value)) AND RIGHT(LOWER(\(text)), LEN(\(value))) = LOWER(\(value)))"
+            case .isEmpty:
+                clause = "(\(column) IS NULL OR \(text) = N'')"
+            case .isNotEmpty:
+                clause = "(\(column) IS NOT NULL AND \(text) <> N'')"
+            }
+            predicates.append(clause)
+        }
+
+        let predicate = predicates.isEmpty ? "" : " WHERE " + predicates.joined(separator: " AND ")
 
         let countSQL = "SELECT COUNT_BIG(*) FROM \(target)\(predicate);"
         let counted = try await run(countSQL, database: database, source: .browse)

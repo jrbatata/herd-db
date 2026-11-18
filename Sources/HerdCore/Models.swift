@@ -242,6 +242,64 @@ public struct ColumnInfo: Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - Column filters
+
+/// Filtro aplicado a uma coluna do grid, sem exigir SQL.
+public struct ColumnFilter: Identifiable, Hashable, Sendable {
+    public enum Operation: String, Codable, CaseIterable, Sendable {
+        case contains
+        case notContains
+        case equals
+        case notEquals
+        case startsWith
+        case endsWith
+        case isEmpty
+        case isNotEmpty
+
+        public var displayName: String {
+            switch self {
+            case .contains: "Contém"
+            case .notContains: "Não contém"
+            case .equals: "Igual a"
+            case .notEquals: "Diferente de"
+            case .startsWith: "Começa com"
+            case .endsWith: "Termina com"
+            case .isEmpty: "É vazio"
+            case .isNotEmpty: "Não é vazio"
+            }
+        }
+
+        public var needsValue: Bool {
+            switch self {
+            case .isEmpty, .isNotEmpty: false
+            default: true
+            }
+        }
+    }
+
+    public var column: String
+    public var operation: Operation
+    public var value: String
+
+    public var id: String { column }
+
+    public init(column: String, operation: Operation, value: String = "") {
+        self.column = column
+        self.operation = operation
+        self.value = value
+    }
+
+    /// Texto curto exibido no cabeçalho e na barra de filtros.
+    public var summary: String {
+        switch operation {
+        case .isEmpty, .isNotEmpty:
+            return "\(column) \(operation.displayName.lowercased())"
+        default:
+            return "\(column) \(operation.displayName.lowercased()) \(value)"
+        }
+    }
+}
+
 // MARK: - Results
 
 public struct TablePage: Sendable, Equatable {

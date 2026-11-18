@@ -106,6 +106,37 @@ final class PostgresDriverTests: XCTestCase {
         XCTAssertEqual(filteredPage.totalRows, 1)
         XCTAssertEqual(filteredPage.result.rows.first?[2], "Água")
 
+        let onlyFilled = try await driver.browseTable(
+            database: "postgres", schema: schema, table: "items", page: 0,
+            pageSize: 500, filter: "", sortColumn: "name", descending: false,
+            columnFilters: [ColumnFilter(column: "price", operation: .isNotEmpty)]
+        )
+        XCTAssertEqual(onlyFilled.totalRows, 1)
+        XCTAssertEqual(onlyFilled.result.rows.first?[2], "Água")
+
+        let onlyEmpty = try await driver.browseTable(
+            database: "postgres", schema: schema, table: "items", page: 0,
+            pageSize: 500, filter: "", sortColumn: "name", descending: false,
+            columnFilters: [ColumnFilter(column: "price", operation: .isEmpty)]
+        )
+        XCTAssertEqual(onlyEmpty.totalRows, 1)
+        XCTAssertEqual(onlyEmpty.result.rows.first?[2], "Café")
+
+        let contains = try await driver.browseTable(
+            database: "postgres", schema: schema, table: "items", page: 0,
+            pageSize: 500, filter: "", sortColumn: "name", descending: false,
+            columnFilters: [ColumnFilter(column: "name", operation: .contains, value: "ÁG")]
+        )
+        XCTAssertEqual(contains.totalRows, 1)
+        XCTAssertEqual(contains.result.rows.first?[2], "Água")
+
+        let unknownColumn = try await driver.browseTable(
+            database: "postgres", schema: schema, table: "items", page: 0,
+            pageSize: 500, filter: "", sortColumn: nil, descending: false,
+            columnFilters: [ColumnFilter(column: "não_existe", operation: .isEmpty)]
+        )
+        XCTAssertEqual(unknownColumn.totalRows, 2, "Colunas fora do catálogo devem ser ignoradas.")
+
         let binaries = try await driver.run(
             #"SELECT ''::bytea AS empty, '\x00ff'::bytea AS data, NULL::bytea AS missing;"#,
             database: "postgres"

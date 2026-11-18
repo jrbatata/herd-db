@@ -39,6 +39,12 @@ final class QueryTab: Identifiable {
     var tableFilter = ""
     var tableSortColumn: String?
     var tableSortDescending = false
+    /// Filtros por coluna aplicados no servidor ao navegar pela tabela.
+    var columnFilters: [ColumnFilter] = []
+    /// Alterna o rodapé entre dados e mensagens; comandos de escrita abrem mensagens sozinhos.
+    var showMessages = false
+    /// Mensagem detalhada da última operação, preservada entre recargas da grade.
+    var runMessage: String?
 
     /// The database can be changed in the tab's toolbar.
     var database: String
@@ -87,6 +93,7 @@ final class QueryTab: Identifiable {
 
         let sql = textToRun(scope: scope)
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        runMessage = nil
 
         guard let config = app.connections.connection(id: connectionID) else {
             state = .failure("Esta conexão não existe mais.")
@@ -111,6 +118,14 @@ final class QueryTab: Identifiable {
                     return
                 }
                 self.state = .success(result)
+                // Scripts que só alteram dados não têm grade: abra as mensagens.
+                self.showMessages = result.isEmptyResultSet
+                if result.isEmptyResultSet {
+                    self.runMessage = Self.commandSummary(
+                        statements: SQLStatementSplitter.split(sql),
+                        result: result
+                    )
+                }
                 app.history.record(
                     connectionID: self.connectionID,
                     database: targetDatabase,
@@ -147,13 +162,16 @@ final class QueryTab: Identifiable {
         let sortColumn = tableSortColumn
         let descending = tableSortDescending
         let schema = self.schema
+        let columnFilters = self.columnFilters
         state = .running
+        showMessages = false
         task = Task { [weak self] in
             do {
                 let loaded = try await driver.browseTable(database: database, schema: schema,
                                                           table: table, page: page, pageSize: 500,
                                                           filter: filter, sortColumn: sortColumn,
-                                                          descending: descending)
+                                                          descending: descending,
+                                                          columnFilters: columnFilters)
                 guard let self, !Task.isCancelled else { return }
                 self.tablePage = loaded
                 self.state = .success(loaded.result)
@@ -163,6 +181,38 @@ final class QueryTab: Identifiable {
                 self?.state = .failure(error.localizedDescription)
             }
         }
+    }
+
+    /// Resume o que foi gravado pelo grid e deixa o rodapé nas mensagens.
+    func recordCommit(statements: [String], result: QueryResult) {
+        runMessage = Self.commandSummary(statements: statements, result: result)
+        showMessages = true
+    }
+
+    /// "1 linha inserida · 2 linhas atualizadas · 42 ms", seguido do SQL aplicado.
+    static func commandSummary(statements: [String], result: QueryResult) -> String {
+        var counts: [String: Int] = [:]
+        for statement in statements {
+            let verb = statement.split(separator: " ").first.map { String($0).uppercased() } ?? "COMANDO"
+            counts[verb, default: 0] += 1
+        }
+
+        func describe(_ verb: String, _ count: Int) -> String {
+            let plural = count == 1 ? "linha" : "linhas"
+            switch verb {
+            case "INSERT": return "\(count) \(plural) inserida\(count == 1 ? "" : "s")"
+            case "UPDATE": return "\(count) \(plural) atualizada\(count == 1 ? "" : "s")"
+            case "DELETE": return "\(count) \(plural) removida\(count == 1 ? "" : "s")"
+            default: return "\(count) \(verb)"
+            }
+        }
+
+        let summary = counts.keys.sorted()
+            .map { describe($0, counts[$0] ?? 0) }
+            .joined(separator: " · ")
+        let milliseconds = Int((result.elapsed * 1000).rounded())
+        let header = summary.isEmpty ? "Comando executado" : summary
+        return "\(header) · \(milliseconds) ms\n\n" + statements.joined(separator: "\n")
     }
 
     func cancel() {

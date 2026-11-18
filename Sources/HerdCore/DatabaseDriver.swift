@@ -27,7 +27,8 @@ public protocol DatabaseDriver: Sendable {
     func run(_ sql: String, database: String, source: QueryLogSource) async throws -> QueryResult
     func browseTable(database: String, schema: String?, table: String,
                      page: Int, pageSize: Int, filter: String,
-                     sortColumn: String?, descending: Bool) async throws -> TablePage
+                     sortColumn: String?, descending: Bool,
+                     columnFilters: [ColumnFilter]) async throws -> TablePage
 
     func shutdown() async
 }
@@ -39,7 +40,8 @@ public extension DatabaseDriver {
 
     func browseTable(database: String, schema: String?, table: String,
                      page: Int, pageSize: Int, filter: String,
-                     sortColumn: String?, descending: Bool) async throws -> TablePage {
+                     sortColumn: String?, descending: Bool,
+                     columnFilters: [ColumnFilter]) async throws -> TablePage {
         throw HerdError.queryFailed("Este driver não oferece paginação de tabelas.")
     }
     func catalog(database: String) async throws -> SQLCatalog {

@@ -327,6 +327,9 @@ struct QueryTabView: View {
             tableFilter: tab.tableFilter,
             tableSortColumn: tab.tableSortColumn,
             tableSortDescending: tab.tableSortDescending,
+            columnFilters: tab.columnFilters,
+            showMessages: $tab.showMessages,
+            messageOverride: tab.runMessage,
             sourceTable: tab.sourceTable,
             schema: tab.schema,
             dialect: dialect,
@@ -337,17 +340,19 @@ struct QueryTabView: View {
                 tab.tableFilter = filter
                 tab.browseTable(app: app, page: 0)
             },
-            onSort: tab.tablePage == nil ? nil : { column in
-                if tab.tableSortColumn == column {
-                    tab.tableSortDescending.toggle()
-                } else {
-                    tab.tableSortColumn = column
-                    tab.tableSortDescending = false
-                }
+            onSort: tab.tablePage == nil ? nil : { column, descending in
+                tab.tableSortColumn = column
+                tab.tableSortDescending = descending
+                tab.browseTable(app: app, page: 0)
+            },
+            onColumnFiltersChange: tab.tablePage == nil ? nil : { filters in
+                tab.columnFilters = filters
                 tab.browseTable(app: app, page: 0)
             },
             onCommitSQL: tab.sourceTable == nil ? nil : { statements in
-                guard let config = app.connections.connection(id: tab.connectionID) else { return }
+                guard let config = app.connections.connection(id: tab.connectionID) else {
+                    return QueryResult()
+                }
                 guard SafeModeGate.authorize(statements: statements, config: config,
                                              connections: app.connections,
                                              action: "gravar as alterações do grid") else {
@@ -356,9 +361,13 @@ struct QueryTabView: View {
                 let driver = app.drivers.driver(for: config)
                 let begin = config.engine == .sqlServer ? "BEGIN TRANSACTION;" : "BEGIN;"
                 let txSQL = ([begin] + statements + ["COMMIT;"]).joined(separator: "\n")
-                _ = try await driver.run(txSQL, database: tab.database, source: .commit)
+                let result = try await driver.run(txSQL, database: tab.database, source: .commit)
                 let currentPage = tab.tablePage?.page ?? 0
+                // O recarregamento volta para os dados; registre a mensagem depois
+                // dele para o rodapé terminar na aba Mensagens.
                 tab.browseTable(app: app, page: currentPage)
+                tab.recordCommit(statements: statements, result: result)
+                return result
             },
             onOpenForeignKey: { ref, val in
                 workspace.openReferencedRow(

@@ -213,6 +213,7 @@ final class WorkspaceState {
             active.title = table
             active.sourceTable = isTable ? table : nil
             active.browseSQL = isTable ? sql : nil
+            active.runMessage = nil
             activeTabID = active.id
             if isTable { active.browseTable(app: app, page: 0) }
             return

@@ -532,7 +532,8 @@ public actor PostgresDriver: DatabaseDriver {
 
     public func browseTable(database: String, schema: String?, table: String,
                             page: Int, pageSize: Int, filter: String,
-                            sortColumn: String?, descending: Bool) async throws -> TablePage {
+                            sortColumn: String?, descending: Bool,
+                            columnFilters: [ColumnFilter] = []) async throws -> TablePage {
         let schemaName = schema ?? "public"
         let columns = try await listColumns(database: database, schema: schemaName, table: table)
         let target = dialect.qualify(schema: schemaName, table: table)
@@ -543,10 +544,50 @@ public actor PostgresDriver: DatabaseDriver {
 
         // Hex-encoded UTF-8 is decoded by PostgreSQL, so arbitrary search text never
         // becomes SQL syntax. Identifiers come only from the catalog and are quoted.
-        let hex = filter.utf8.map { String(format: "%02x", $0) }.joined()
-        let search = "(convert_from(decode('\(hex)', 'hex'), 'UTF8') COLLATE \"default\")"
-        let terms = columns.map { "strpos(lower(\(dialect.quote($0.name))::text), lower(\(search))) > 0" }
-        let predicate = filter.isEmpty || terms.isEmpty ? "" : " WHERE " + terms.joined(separator: " OR ")
+        func search(_ value: String) -> String {
+            let hex = value.utf8.map { String(format: "%02x", $0) }.joined()
+            return "(convert_from(decode('\(hex)', 'hex'), 'UTF8') COLLATE \"default\")"
+        }
+
+        var predicates: [String] = []
+        if !filter.isEmpty {
+            let literal = search(filter)
+            let terms = columns.map {
+                "strpos(lower(\(dialect.quote($0.name))::text), lower(\(literal))) > 0"
+            }
+            if !terms.isEmpty {
+                predicates.append("(" + terms.joined(separator: " OR ") + ")")
+            }
+        }
+
+        for item in columnFilters {
+            guard columns.contains(where: { $0.name == item.column }) else { continue }
+            let column = dialect.quote(item.column)
+            let text = "\(column)::text"
+            let literal = search(item.value)
+            let clause: String
+            switch item.operation {
+            case .contains:
+                clause = "strpos(lower(\(text)), lower(\(literal))) > 0"
+            case .notContains:
+                clause = "(\(text) IS NULL OR strpos(lower(\(text)), lower(\(literal))) = 0)"
+            case .equals:
+                clause = "lower(\(text)) = lower(\(literal))"
+            case .notEquals:
+                clause = "(\(text) IS NULL OR lower(\(text)) <> lower(\(literal)))"
+            case .startsWith:
+                clause = "strpos(lower(\(text)), lower(\(literal))) = 1"
+            case .endsWith:
+                clause = "(\(text) IS NOT NULL AND length(lower(\(text))) >= length(lower(\(literal))) AND right(lower(\(text)), length(lower(\(literal)))) = lower(\(literal)))"
+            case .isEmpty:
+                clause = "(\(column) IS NULL OR \(text) = '')"
+            case .isNotEmpty:
+                clause = "(\(column) IS NOT NULL AND \(text) <> '')"
+            }
+            predicates.append(clause)
+        }
+
+        let predicate = predicates.isEmpty ? "" : " WHERE " + predicates.joined(separator: " AND ")
         let countSQL = "SELECT count(*) FROM \(target)\(predicate);"
         let counted = try await run(countSQL, database: database, source: .browse)
         let totalText: String? = counted.rows.first?.first ?? nil

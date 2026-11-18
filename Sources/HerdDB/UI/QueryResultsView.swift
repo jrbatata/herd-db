@@ -9,13 +9,17 @@ struct QueryResultsView: View {
     var tableFilter = ""
     var tableSortColumn: String? = nil
     var tableSortDescending = false
+    var columnFilters: [ColumnFilter] = []
+    var showMessages: Binding<Bool>? = nil
+    var messageOverride: String? = nil
     var sourceTable: String? = nil
     var schema: String? = nil
     var dialect: SQLDialect = .postgres
     var onBrowsePage: ((Int) -> Void)? = nil
     var onApplyFilter: ((String) -> Void)? = nil
-    var onSort: ((String) -> Void)? = nil
-    var onCommitSQL: (([String]) async throws -> Void)? = nil
+    var onSort: ((String, Bool) -> Void)? = nil
+    var onColumnFiltersChange: (([ColumnFilter]) -> Void)? = nil
+    var onCommitSQL: (([String]) async throws -> QueryResult)? = nil
     var onOpenForeignKey: ((String, String) -> Void)? = nil
 
     var body: some View {
@@ -64,13 +68,7 @@ struct QueryResultsView: View {
             .background(Color(nsColor: .textBackgroundColor))
 
         case .success(let result):
-            if result.isEmptyResultSet && sourceTable == nil {
-                placeholder(
-                    icon: .check,
-                    title: result.message ?? "Comando executado",
-                    subtitle: "\(Int((result.elapsed * 1000).rounded())) ms"
-                )
-            } else if result.sets.count > 1 {
+            if result.sets.count > 1 {
                 MultiResultView(sets: result.sets)
                     .id(result.sets.count)
             } else {
@@ -82,12 +80,16 @@ struct QueryResultsView: View {
                     tableFilter: tableFilter,
                     tableSortColumn: tableSortColumn,
                     tableSortDescending: tableSortDescending,
+                    columnFilters: columnFilters,
+                    messagesVisible: showMessages,
+                    messageOverride: messageOverride,
                     sourceTable: sourceTable,
                     schema: schema,
                     dialect: dialect,
                     onBrowsePage: onBrowsePage,
                     onApplyFilter: onApplyFilter,
                     onSort: onSort,
+                    onColumnFiltersChange: onColumnFiltersChange,
                     onCommitSQL: onCommitSQL,
                     onOpenForeignKey: onOpenForeignKey
                 )
@@ -235,13 +237,17 @@ private struct ResultTable: View {
     let tableFilter: String
     let tableSortColumn: String?
     let tableSortDescending: Bool
+    let columnFilters: [ColumnFilter]
+    let messagesVisible: Binding<Bool>?
+    let messageOverride: String?
     let sourceTable: String?
     let schema: String?
     let dialect: SQLDialect
     let onBrowsePage: ((Int) -> Void)?
     let onApplyFilter: ((String) -> Void)?
-    let onSort: ((String) -> Void)?
-    let onCommitSQL: (([String]) async throws -> Void)?
+    let onSort: ((String, Bool) -> Void)?
+    let onColumnFiltersChange: (([ColumnFilter]) -> Void)?
+    let onCommitSQL: (([String]) async throws -> QueryResult)?
     let onOpenForeignKey: ((String, String) -> Void)?
 
     @State private var columnWidths: [CGFloat]
@@ -250,7 +256,10 @@ private struct ResultTable: View {
     @State private var page = 0
     @State private var selectedRows: Set<Int> = []
     @State private var selectionAnchor: Int?
-    @State private var showMessages = false
+    @State private var localColumnFilters: [ColumnFilter] = []
+    @State private var localSortColumn: String?
+    @State private var localSortDescending = false
+    @State private var localMessages = false
     @State private var copyMenuHovering = false
 
     // Edição inline
@@ -276,13 +285,17 @@ private struct ResultTable: View {
         tableFilter: String = "",
         tableSortColumn: String? = nil,
         tableSortDescending: Bool = false,
+        columnFilters: [ColumnFilter] = [],
+        messagesVisible: Binding<Bool>? = nil,
+        messageOverride: String? = nil,
         sourceTable: String? = nil,
         schema: String? = nil,
         dialect: SQLDialect = .postgres,
         onBrowsePage: ((Int) -> Void)? = nil,
         onApplyFilter: ((String) -> Void)? = nil,
-        onSort: ((String) -> Void)? = nil,
-        onCommitSQL: (([String]) async throws -> Void)? = nil,
+        onSort: ((String, Bool) -> Void)? = nil,
+        onColumnFiltersChange: (([ColumnFilter]) -> Void)? = nil,
+        onCommitSQL: (([String]) async throws -> QueryResult)? = nil,
         onOpenForeignKey: ((String, String) -> Void)? = nil
     ) {
         self.resultSet = resultSet
@@ -291,25 +304,101 @@ private struct ResultTable: View {
         self.tableFilter = tableFilter
         self.tableSortColumn = tableSortColumn
         self.tableSortDescending = tableSortDescending
+        self.columnFilters = columnFilters
+        self.messagesVisible = messagesVisible
+        self.messageOverride = messageOverride
         self.sourceTable = sourceTable
         self.schema = schema
         self.dialect = dialect
         self.onBrowsePage = onBrowsePage
         self.onApplyFilter = onApplyFilter
         self.onSort = onSort
+        self.onColumnFiltersChange = onColumnFiltersChange
         self.onCommitSQL = onCommitSQL
         self.onOpenForeignKey = onOpenForeignKey
         _columnWidths = State(initialValue: Self.initialWidths(for: resultSet))
         _filter = State(initialValue: tableFilter)
     }
 
+    private var activeColumnFilters: [ColumnFilter] {
+        tablePage == nil ? localColumnFilters : columnFilters
+    }
+
+    private var activeSortColumn: String? {
+        tablePage == nil ? localSortColumn : tableSortColumn
+    }
+
+    private var activeSortDescending: Bool {
+        tablePage == nil ? localSortDescending : tableSortDescending
+    }
+
+    /// Sem um binding externo (blocos de múltiplos resultados), o painel
+    /// alterna com estado local para o controle continuar funcional.
+    private var messagesBinding: Binding<Bool> {
+        messagesVisible ?? $localMessages
+    }
+
+    private func matches(_ item: ColumnFilter, row: [String?]) -> Bool {
+        guard let index = resultSet.columns.firstIndex(of: item.column) else { return true }
+        let raw = row.indices.contains(index) ? row[index] : nil
+        let value = raw ?? ""
+        switch item.operation {
+        case .isEmpty:
+            return raw == nil || value.isEmpty
+        case .isNotEmpty:
+            return raw != nil && !value.isEmpty
+        case .contains:
+            return value.localizedCaseInsensitiveContains(item.value)
+        case .notContains:
+            return !value.localizedCaseInsensitiveContains(item.value)
+        case .equals:
+            return value.compare(item.value, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        case .notEquals:
+            return value.compare(item.value, options: [.caseInsensitive, .diacriticInsensitive]) != .orderedSame
+        case .startsWith:
+            return value.range(of: item.value, options: [.caseInsensitive, .diacriticInsensitive, .anchored]) != nil
+        case .endsWith:
+            return value.range(of: item.value, options: [.caseInsensitive, .diacriticInsensitive, .backwards, .anchored]) != nil
+        }
+    }
+
+    private func sortedRows(_ rows: [(offset: Int, element: [String?])]) -> [(offset: Int, element: [String?])] {
+        guard let column = activeSortColumn,
+              let index = resultSet.columns.firstIndex(of: column) else { return rows }
+        let descending = activeSortDescending
+        return rows.sorted { left, right in
+            let a = left.element.indices.contains(index) ? left.element[index] : nil
+            let b = right.element.indices.contains(index) ? right.element[index] : nil
+            switch (a, b) {
+            case (nil, nil):
+                return left.offset < right.offset
+            case (nil, _):
+                return false
+            case (_, nil):
+                return true
+            case let (a?, b?):
+                let order = a.localizedStandardCompare(b)
+                if order == .orderedSame { return left.offset < right.offset }
+                return descending ? order == .orderedDescending : order == .orderedAscending
+            }
+        }
+    }
+
     private var filteredRows: [(offset: Int, element: [String?])] {
         let all = Array(resultSet.rows.enumerated())
         if tablePage != nil { return all }
-        guard !filter.isEmpty else { return all }
-        return all.filter { row in
-            row.element.contains { ($0 ?? "NULL").localizedCaseInsensitiveContains(filter) }
+        var rows = all
+        if !activeColumnFilters.isEmpty {
+            rows = rows.filter { row in
+                activeColumnFilters.allSatisfy { matches($0, row: row.element) }
+            }
         }
+        if !filter.isEmpty {
+            rows = rows.filter { row in
+                row.element.contains { ($0 ?? "NULL").localizedCaseInsensitiveContains(filter) }
+            }
+        }
+        return sortedRows(rows)
     }
 
     private var basePageRows: [(offset: Int, element: [String?])] {
@@ -394,10 +483,11 @@ private struct ResultTable: View {
                 Divider()
             }
             Divider()
-            if showMessages {
+            if messagesBinding.wrappedValue || resultSet.columns.isEmpty {
                 ScrollView {
-                    Text(message ?? (resultSet.rows.isEmpty ? "Nenhuma linha retornada." : "\(resultSet.rows.count) linhas retornadas."))
+                    Text(messagesText)
                         .font(.system(size: 11, design: .monospaced))
+                        .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
                 }
@@ -449,6 +539,13 @@ private struct ResultTable: View {
                 }
             )
         }
+    }
+
+    private var messagesText: String {
+        if let messageOverride, !messageOverride.isEmpty { return messageOverride }
+        if let message { return message }
+        if resultSet.rows.isEmpty { return "Nenhuma linha retornada." }
+        return "\(resultSet.rows.count) \(resultSet.rows.count == 1 ? "linha retornada" : "linhas retornadas")."
     }
 
     private var toolbar: some View {
@@ -588,17 +685,6 @@ private struct ResultTable: View {
             }
 
             Spacer(minLength: 8)
-
-            Button {
-                showMessages.toggle()
-            } label: {
-                Text(showMessages ? "Dados" : "Mensagens")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .fixedSize()
-            .help(showMessages ? "Mostrar dados" : "Mostrar mensagens da execução")
         }
         .padding(.horizontal, 10)
         .frame(height: 34)
@@ -607,34 +693,57 @@ private struct ResultTable: View {
 
     private var pagination: some View {
         HStack(spacing: 10) {
-            let count = (tablePage?.totalRows ?? filteredRows.count) + insertedRows.count - deletedRowOffsets.count
-            Text("\(max(0, count)) \(count == 1 ? "linha" : "linhas")")
-                .foregroundStyle(.secondary)
-            if !selectedRows.isEmpty {
-                Text("· \(selectedRows.count) selecionada\(selectedRows.count == 1 ? "" : "s")")
+            if !resultSet.columns.isEmpty {
+                let count = (tablePage?.totalRows ?? filteredRows.count) + insertedRows.count - deletedRowOffsets.count
+                Text("\(max(0, count)) \(count == 1 ? "linha" : "linhas")")
                     .foregroundStyle(.secondary)
-            }
-            if hasPendingChanges {
-                Text("· \(pendingChangesCount) alteração\(pendingChangesCount == 1 ? "" : "ões") não salva\(pendingChangesCount == 1 ? "" : "s")")
-                    .foregroundStyle(.orange)
+                if !selectedRows.isEmpty {
+                    Text("· \(selectedRows.count) selecionada\(selectedRows.count == 1 ? "" : "s")")
+                        .foregroundStyle(.secondary)
+                }
+                if hasPendingChanges {
+                    Text("· \(pendingChangesCount) alteração\(pendingChangesCount == 1 ? "" : "ões") não salva\(pendingChangesCount == 1 ? "" : "s")")
+                        .foregroundStyle(.orange)
+                }
             }
             Spacer()
-            Button { changePage(max(0, currentPage - 1)) } label: {
-                Icon(.chevron, size: 12).rotationEffect(.degrees(180))
+
+            if resultSet.columns.isEmpty {
+                Text("Mensagens")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .help("Resultado da execução")
+            } else {
+                Picker("Painel do resultado", selection: messagesBinding) {
+                    Text("Dados").tag(false)
+                    Text("Mensagens").tag(true)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .controlSize(.mini)
+                .frame(width: 172)
+                .help("Alternar entre os dados e as mensagens da execução")
             }
-            .disabled(currentPage == 0)
-            .help("Página anterior")
-            Text("Página \(currentPage + 1) de \(pageCount)")
-            Button { changePage(min(pageCount - 1, currentPage + 1)) } label: {
-                Icon(.chevron, size: 12)
+
+            if !messagesBinding.wrappedValue && !resultSet.columns.isEmpty {
+                Button { changePage(max(0, currentPage - 1)) } label: {
+                    Icon(.chevron, size: 12).rotationEffect(.degrees(180))
+                }
+                .disabled(currentPage == 0)
+                .help("Página anterior")
+                Text("Página \(currentPage + 1) de \(pageCount)")
+                Button { changePage(min(pageCount - 1, currentPage + 1)) } label: {
+                    Icon(.chevron, size: 12)
+                }
+                .disabled(currentPage >= pageCount - 1)
+                .help("Próxima página")
             }
-            .disabled(currentPage >= pageCount - 1)
-            .help("Próxima página")
         }
         .font(.system(size: 10.5))
         .buttonStyle(.plain)
         .padding(.horizontal, 12)
-        .frame(height: 28)
+        .frame(height: 30)
     }
 
     private func changePage(_ target: Int) {
@@ -902,7 +1011,8 @@ private struct ResultTable: View {
         commitError = nil
         Task { @MainActor in
             do {
-                try await onCommitSQL(statements)
+                _ = try await onCommitSQL(statements)
+                messagesBinding.wrappedValue = true
                 isCommitting = false
                 discardChanges()
             } catch is CancellationError {
@@ -974,44 +1084,26 @@ private struct ResultTable: View {
                 .padding(.leading, 10)
 
             ForEach(Array(resultSet.columns.enumerated()), id: \.offset) { index, name in
-                let colMeta = columnInfo(at: index)
-                HStack(spacing: 4) {
-                    if colMeta?.isPrimaryKey == true {
-                        Icon(.key, size: 10)
-                            .foregroundStyle(.orange)
-                    } else if colMeta?.references != nil {
-                        Icon(.link, size: 10)
-                            .foregroundStyle(.secondary)
+                columnHeader(index: index, name: name)
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(Color(nsColor: .separatorColor))
+                            .frame(width: 0.5)
                     }
-                    Text(name + (tableSortColumn == name ? (tableSortDescending ? " ↓" : " ↑") : ""))
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .frame(width: width(index), alignment: .leading)
-                .padding(.horizontal, 8)
-                .contentShape(Rectangle())
-                .onTapGesture { if tablePage != nil { onSort?(name) } }
-                .help(tablePage == nil ? name : "Ordenar por \(name)")
-                .overlay(alignment: .leading) {
-                    Rectangle()
-                        .fill(Color(nsColor: .separatorColor))
-                        .frame(width: 0.5)
-                }
-                .overlay(alignment: .trailing) {
-                    Color.clear.frame(width: 8)
-                        .contentShape(Rectangle())
-                        .onHover { inside in
-                            if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-                        }
-                        .gesture(DragGesture(minimumDistance: 1)
-                            .onChanged { value in
-                                if dragWidths == nil { dragWidths = columnWidths }
-                                let start = dragWidths?[index] ?? width(index)
-                                columnWidths[index] = min(700, max(60, start + value.translation.width))
+                    .overlay(alignment: .trailing) {
+                        Color.clear.frame(width: 7)
+                            .contentShape(Rectangle())
+                            .onHover { inside in
+                                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
                             }
-                            .onEnded { _ in dragWidths = nil })
-                }
+                            .gesture(DragGesture(minimumDistance: 1)
+                                .onChanged { value in
+                                    if dragWidths == nil { dragWidths = columnWidths }
+                                    let start = dragWidths?[index] ?? width(index)
+                                    columnWidths[index] = min(700, max(60, start + value.translation.width))
+                                }
+                                .onEnded { _ in dragWidths = nil })
+                    }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1021,6 +1113,84 @@ private struct ResultTable: View {
             Rectangle()
                 .fill(Color(nsColor: .separatorColor))
                 .frame(height: 0.5)
+        }
+    }
+
+    private func columnHeader(index: Int, name: String) -> some View {
+        let colMeta = columnInfo(at: index)
+        let isSorted = activeSortColumn == name
+        let filterItem = activeColumnFilters.first { $0.column == name }
+
+        return HStack(spacing: 4) {
+            HStack(spacing: 4) {
+                if colMeta?.isPrimaryKey == true {
+                    Icon(.key, size: 10)
+                        .foregroundStyle(.orange)
+                } else if colMeta?.references != nil {
+                    Icon(.link, size: 10)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(name + (isSorted ? (activeSortDescending ? " ↓" : " ↑") : ""))
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(isSorted || filterItem != nil ? Color.primary : Color.secondary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 2)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { toggleSort(name) }
+            .help("Ordenar por \(name)")
+
+            ColumnFilterButton(column: name, filter: filterItem) { item in
+                applyColumnFilter(item, for: name)
+            }
+        }
+        .frame(width: width(index), alignment: .leading)
+        .padding(.horizontal, 8)
+        .contextMenu {
+            Button("Ordenar crescente") { applySort(name, descending: false) }
+            Button("Ordenar decrescente") { applySort(name, descending: true) }
+
+            Divider()
+
+            Button("Filtrar onde \(name) não é vazio") {
+                applyColumnFilter(ColumnFilter(column: name, operation: .isNotEmpty), for: name)
+            }
+            Button("Filtrar onde \(name) é vazio") {
+                applyColumnFilter(ColumnFilter(column: name, operation: .isEmpty), for: name)
+            }
+            if filterItem != nil {
+                Button("Limpar filtro de \(name)") { applyColumnFilter(nil, for: name) }
+            }
+        }
+    }
+
+    private func toggleSort(_ column: String) {
+        if activeSortColumn == column {
+            applySort(column, descending: !activeSortDescending)
+        } else {
+            applySort(column, descending: false)
+        }
+    }
+
+    private func applySort(_ column: String, descending: Bool) {
+        if tablePage != nil {
+            onSort?(column, descending)
+        } else {
+            localSortColumn = column
+            localSortDescending = descending
+        }
+    }
+
+    private func applyColumnFilter(_ item: ColumnFilter?, for column: String) {
+        var filters = activeColumnFilters
+        filters.removeAll { $0.column == column }
+        if let item { filters.append(item) }
+        if tablePage != nil {
+            onColumnFiltersChange?(filters)
+        } else {
+            localColumnFilters = filters
         }
     }
 
@@ -1142,6 +1312,112 @@ private struct ResultTable: View {
             return Color.green.opacity(0.10)
         }
         return index.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(0.028)
+    }
+}
+
+/// Botão de funil no cabeçalho da coluna, com o editor de filtro em popover.
+private struct ColumnFilterButton: View {
+    let column: String
+    let filter: ColumnFilter?
+    let onApply: (ColumnFilter?) -> Void
+
+    @State private var isPresented = false
+    @State private var hovering = false
+
+    var body: some View {
+        Button {
+            isPresented.toggle()
+        } label: {
+            Icon(.filter, size: 10, solid: filter != nil)
+                .foregroundStyle(filter != nil ? Color.accentColor : Color.secondary.opacity(hovering ? 0.9 : 0.45))
+                .frame(width: 16, height: 16)
+                .background(
+                    filter != nil
+                        ? Color.accentColor.opacity(0.14)
+                        : (hovering ? Color.primary.opacity(0.08) : .clear),
+                    in: RoundedRectangle(cornerRadius: 4, style: .continuous)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(filter?.summary ?? "Filtrar em \(column)")
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+            ColumnFilterEditor(column: column, current: filter) { item in
+                onApply(item)
+                isPresented = false
+            }
+        }
+    }
+}
+
+private struct ColumnFilterEditor: View {
+    let column: String
+    let current: ColumnFilter?
+    let onApply: (ColumnFilter?) -> Void
+
+    @State private var operation: ColumnFilter.Operation
+    @State private var value: String
+    @FocusState private var valueFocused: Bool
+
+    init(column: String, current: ColumnFilter?, onApply: @escaping (ColumnFilter?) -> Void) {
+        self.column = column
+        self.current = current
+        self.onApply = onApply
+        _operation = State(initialValue: current?.operation ?? .contains)
+        _value = State(initialValue: current?.value ?? "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Filtrar em \(column)")
+                .font(.system(size: 11.5, weight: .semibold))
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Picker("Condição", selection: $operation) {
+                ForEach(ColumnFilter.Operation.allCases, id: \.self) { item in
+                    Text(item.displayName).tag(item)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 210)
+
+            if operation.needsValue {
+                TextField("Valor", text: $value)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11.5))
+                    .focused($valueFocused)
+                    .onSubmit { apply() }
+            }
+
+            HStack {
+                Button("Limpar") { onApply(nil) }
+                    .disabled(current == nil)
+
+                Spacer()
+
+                Button("Aplicar", action: apply)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(operation.needsValue && value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .controlSize(.small)
+        }
+        .padding(12)
+        .frame(width: 250)
+        .onAppear {
+            if operation.needsValue { valueFocused = true }
+        }
+        .onChange(of: operation) { _, newValue in
+            valueFocused = newValue.needsValue
+        }
+    }
+
+    private func apply() {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if operation.needsValue, trimmed.isEmpty { return }
+        onApply(ColumnFilter(column: column, operation: operation, value: operation.needsValue ? value : ""))
     }
 }
 
