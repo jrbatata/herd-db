@@ -710,6 +710,24 @@ private struct ResultTable: View {
 
     private var pagination: some View {
         HStack(spacing: 10) {
+            if resultSet.columns.isEmpty {
+                Text("Mensagens")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .help("Resultado da execução")
+            } else {
+                Picker("Painel do resultado", selection: messagesBinding) {
+                    Text("Dados").tag(false)
+                    Text("Mensagens").tag(true)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .controlSize(.mini)
+                .frame(width: 172)
+                .help("Alternar entre os dados e as mensagens da execução")
+            }
+
             if !resultSet.columns.isEmpty {
                 if messagesBinding.wrappedValue {
                     Text("\(totalRowCount) \(totalRowCount == 1 ? "linha" : "linhas") no total")
@@ -728,29 +746,8 @@ private struct ResultTable: View {
                         .foregroundStyle(.orange)
                 }
             }
+
             Spacer()
-
-            if resultSet.columns.isEmpty {
-                Text("Mensagens")
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .help("Resultado da execução")
-            } else {
-                if !messagesBinding.wrappedValue {
-                    pageSizeMenu
-                }
-
-                Picker("Painel do resultado", selection: messagesBinding) {
-                    Text("Dados").tag(false)
-                    Text("Mensagens").tag(true)
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .controlSize(.mini)
-                .frame(width: 172)
-                .help("Alternar entre os dados e as mensagens da execução")
-            }
 
             if !messagesBinding.wrappedValue && !resultSet.columns.isEmpty {
                 Button { changePage(max(0, currentPage - 1)) } label: {
@@ -764,6 +761,8 @@ private struct ResultTable: View {
                 }
                 .disabled(currentPage >= pageCount - 1)
                 .help("Próxima página")
+
+                pageSizeMenu
             }
         }
         .font(.system(size: 10.5))
@@ -787,10 +786,13 @@ private struct ResultTable: View {
             }
         } label: {
             Text("\(activePageSize) por página")
+                .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
+        .controlSize(.mini)
+        .font(.system(size: 10.5))
         .fixedSize()
         .help("Linhas por página")
     }
