@@ -207,7 +207,7 @@ struct HerdCommands: Commands {
             .keyboardShortcut("b", modifiers: .command)
             .disabled(workspace == nil)
 
-            Button("Alternar histórico") { workspace?.inspectorVisible.toggle() }
+            Button("Alternar inspetor") { workspace?.inspectorVisible.toggle() }
                 .keyboardShortcut("b", modifiers: [.command, .option])
                 .disabled(workspace?.activeTab == nil)
 

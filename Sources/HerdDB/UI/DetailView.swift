@@ -71,7 +71,7 @@ struct TopBarView: View {
                     workspace.resultsVisible.toggle()
                 }
                 WindowIconButton(symbol: .sidebar, selected: workspace.inspectorVisible,
-                                 help: "Alternar histórico (⌥⌘B)") {
+                                 help: "Alternar inspetor (⌥⌘B)") {
                     workspace.inspectorVisible.toggle()
                 }
                 WindowIconButton(symbol: .processes, selected: workspace.processes.visible,

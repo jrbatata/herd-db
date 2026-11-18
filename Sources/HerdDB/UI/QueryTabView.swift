@@ -287,7 +287,7 @@ struct QueryTabView: View {
 
     private var historyButton: some View {
         WindowIconButton(symbol: .clock, selected: workspace.inspectorVisible,
-                         help: "Histórico de scripts (⌥⌘B)") {
+                         help: "Alternar inspetor · histórico de scripts (⌥⌘B)") {
             workspace.inspectorVisible.toggle()
         }
     }
