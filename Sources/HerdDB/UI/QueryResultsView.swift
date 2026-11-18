@@ -512,9 +512,9 @@ private struct ResultTable: View {
                     Button("Copiar com cabeçalhos") { copyRows(withHeaders: true) }
                         .keyboardShortcut("c", modifiers: [.command, .shift])
                 } label: {
-                    Icon(.copy, size: 14)
+                    Icon(.copy, size: 12)
                         .foregroundStyle(.secondary)
-                        .frame(width: 34, height: 28)
+                        .frame(width: 26, height: 28)
                         .background(
                             copyMenuHovering ? Color.primary.opacity(0.09) : .clear,
                             in: RoundedRectangle(cornerRadius: 6)
@@ -524,6 +524,8 @@ private struct ResultTable: View {
                     copyRows(withHeaders: false)
                 }
                 .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .controlSize(.small)
                 .fixedSize()
                 .help("Copiar linhas selecionadas (⌘C)")
                 .onHover { copyMenuHovering = $0 }
