@@ -123,7 +123,7 @@ struct SidebarView: View {
     private var footer: some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(app.connections.connections.isEmpty ? Color.secondary.opacity(0.4) : Color.green)
+                .fill(footerStatusColor)
                 .frame(width: 6, height: 6)
             Text(connectionCountText)
                 .font(.system(size: 10.5))
@@ -132,6 +132,11 @@ struct SidebarView: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 28)
+    }
+
+    /// Verde apenas quando há alguma sessão aberta; conexões desconectadas ficam neutras.
+    private var footerStatusColor: Color {
+        workspace.tree.connectedIDs.isEmpty ? Color.secondary.opacity(0.4) : Color.green
     }
 
     private var connectionCountText: String {
@@ -161,15 +166,9 @@ struct TreeRowView: View {
         HStack(spacing: 5) {
             chevron
 
-            Group {
-                if node.kind == .connection {
-                    Icon(tree.connectedIDs.contains(node.connectionID) ? .cloudCheck : .cloudX, size: 16)
-                } else {
-                    Icon(node.symbolName, size: node.kind == .column ? 12 : 16, solid: isSelected)
-                }
-            }
-            .foregroundStyle(iconColor)
-            .frame(width: 17)
+            Icon(node.symbolName, size: node.kind == .column ? 12 : 16, solid: isSelected)
+                .foregroundStyle(iconColor)
+                .frame(width: 17)
 
             Text(node.title)
                 .font(.system(size: 12.5, weight: node.kind == .connection ? .semibold : .regular))
@@ -191,6 +190,8 @@ struct TreeRowView: View {
                     .controlSize(.small)
                     .scaleEffect(0.55)
                     .frame(width: 12, height: 12)
+            } else if node.kind == .connection {
+                connectionStatus
             }
         }
         .padding(.leading, CGFloat(row.depth) * 13 + 4)
@@ -228,6 +229,25 @@ struct TreeRowView: View {
         }
     }
 
+    /// Estado da sessão, alinhado à direita da linha: clique para alternar.
+    private var connectionStatus: some View {
+        let connected = tree.connectedIDs.contains(node.connectionID)
+        return Button {
+            if connected {
+                tree.disconnect(node)
+            } else {
+                tree.connect(node)
+            }
+        } label: {
+            Icon(connected ? .check : .alertCircle, size: 14, solid: true)
+                .foregroundStyle(connected ? Color.green : Color.red)
+                .frame(width: 16, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(connected ? "Conectado — clique para desconectar" : "Desconectado — clique para conectar")
+    }
+
     private var chevron: some View {
         Group {
             if node.isExpandable {
@@ -260,10 +280,8 @@ struct TreeRowView: View {
 
     private var iconColor: Color {
         if node.kind == .error { return .red }
-        if node.kind == .connection {
-            return tree.connectedIDs.contains(node.connectionID) ? .green : .red
-        }
         if isSelected { return .white }
+        if node.kind == .connection { return .secondary }
         // Paleta enxuta: azul somente no que é aberto/navegável (conexão, tabela, view),
         // âmbar nas chaves, o resto neutro.
         switch node.kind {
@@ -275,7 +293,7 @@ struct TreeRowView: View {
             if node.column?.isPrimaryKey == true { return .orange }
             return Color.secondary.opacity(0.8)
         case .connection, .error:
-            return .red
+            return .secondary
         }
     }
 
@@ -309,6 +327,11 @@ struct TreeRowView: View {
                 Divider()
                 Button("Atualizar") { tree.reload(node) }
                     .keyboardShortcut("r", modifiers: .command)
+                if tree.connectedIDs.contains(node.connectionID) {
+                    Button("Desconectar") { tree.disconnect(node) }
+                } else {
+                    Button("Conectar") { tree.connect(node) }
+                }
                 Divider()
                 Button("Remover conexão…", role: .destructive) { confirmRemoval = true }
                     .keyboardShortcut(.delete, modifiers: .command)

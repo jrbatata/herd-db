@@ -42,7 +42,7 @@ struct TreeNode: Identifiable, Hashable, Sendable {
 
     var symbolName: IconSymbol {
         switch kind {
-        case .connection: .database
+        case .connection: .globe
         case .database: .database
         case .schema: .folder
         case .tablesFolder, .table: .table
@@ -82,6 +82,8 @@ final class ObjectTreeModel {
     private var selectionAnchorID: String?
 
     private var knownConfigs: [UUID: ConnectionConfig] = [:]
+    /// Invalida carregamentos em andamento quando a conexão é desconectada ou trocada.
+    private var connectionGeneration: [UUID: Int] = [:]
     private var didAutoExpand = false
 
     init(app: AppModel) {
@@ -100,6 +102,7 @@ final class ObjectTreeModel {
 
         for config in configs where previous[config.id] != nil && previous[config.id] != config {
             connectedIDs.remove(config.id)
+            connectionGeneration[config.id, default: 0] += 1
             clearSubtree("c/\(config.id.uuidString)")
             if expanded.contains(connectionID(config.id)) {
                 Task { await loadNode(withID: connectionID(config.id)) }
@@ -192,16 +195,50 @@ final class ObjectTreeModel {
     }
 
     func reload(_ node: TreeNode) {
-        if node.kind == .connection { connectedIDs.remove(node.connectionID) }
+        if node.kind == .connection {
+            connectedIDs.remove(node.connectionID)
+            connectionGeneration[node.connectionID, default: 0] += 1
+        }
         clearSubtree(node.id)
         if node.isExpandable, expanded.contains(node.id) {
             Task { await loadNode(node) }
         }
     }
 
+    /// Abre a sessão com o servidor sem exigir que o usuário expanda a árvore.
+    func connect(_ node: TreeNode) {
+        guard node.kind == .connection,
+              !connectedIDs.contains(node.connectionID) else { return }
+        expanded.insert(node.id)
+        if children[node.id] == nil {
+            Task { await loadNode(node) }
+        }
+    }
+
+    /// Encerra a sessão e recolhe a árvore, mantendo a conexão na lista.
+    func disconnect(_ node: TreeNode) {
+        guard node.kind == .connection else { return }
+        connectedIDs.remove(node.connectionID)
+        connectionGeneration[node.connectionID, default: 0] += 1
+        expanded.remove(node.id)
+        clearSubtree(node.id)
+
+        // A seleção não pode continuar apontando para nós que deixaram de existir.
+        let subtreePrefix = node.id + "\u{1F}"
+        selectedIDs = selectedIDs.filter { !$0.hasPrefix(subtreePrefix) }
+        if let current = selection, current.hasPrefix(subtreePrefix) {
+            selection = selectedIDs.first
+            selectionAnchorID = nil
+        }
+
+        app.drivers.invalidate(node.connectionID)
+        app.catalog.invalidate(connectionID: node.connectionID)
+    }
+
     func reloadAll() {
         app.catalog.invalidateAll()
         connectedIDs.removeAll()
+        connectionGeneration = connectionGeneration.mapValues { $0 + 1 }
         children.removeAll()
         loading.removeAll()
         selection = nil
@@ -254,9 +291,12 @@ final class ObjectTreeModel {
         loading.insert(node.id)
         defer { loading.remove(node.id) }
 
+        let generation = connectionGeneration[node.connectionID, default: 0]
         let driver = app.drivers.driver(for: config)
         do {
             let kids = try await loadChildren(of: node, config: config, driver: driver)
+            // A conexão foi desconectada (ou trocada) enquanto isso carregava.
+            guard generation == connectionGeneration[node.connectionID, default: 0] else { return }
             if node.kind == .connection { connectedIDs.insert(node.connectionID) }
             children[node.id] = kids
             for kid in kids where expanded.contains(kid.id) && children[kid.id] == nil {
@@ -265,6 +305,7 @@ final class ObjectTreeModel {
         } catch is CancellationError {
             return
         } catch {
+            guard generation == connectionGeneration[node.connectionID, default: 0] else { return }
             if node.kind == .connection { connectedIDs.remove(node.connectionID) }
             children[node.id] = [errorNode(for: node, message: error.localizedDescription)]
         }
