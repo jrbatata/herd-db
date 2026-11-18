@@ -122,7 +122,7 @@ final class SQLCompletionEngineTests: XCTestCase {
         XCTAssertTrue(items.contains { $0.kind == .view })
     }
 
-    func testTableNameSuggestionsPreferDefaultSchema() {
+    func testTableNameSuggestionsAlwaysQualifySchema() {
         let items = SQLCompletionEngine.suggestions(
             in: "SELECT * FROM ",
             at: 14,
@@ -132,9 +132,11 @@ final class SQLCompletionEngineTests: XCTestCase {
 
         let orders = items.first { $0.title == "orders" }
         let pedidos = items.first { $0.title == "pedidos" }
-        XCTAssertEqual(orders?.insertText, "orders")
+        XCTAssertEqual(orders?.insertText, "public.orders")
         XCTAssertEqual(pedidos?.insertText, "vendas.pedidos")
-        XCTAssertNotNil(items.first { $0.kind == .schema && $0.insertText == "vendas." })
+        let schema = items.first { $0.kind == .schema && $0.insertText == "vendas." }
+        XCTAssertNotNil(schema)
+        XCTAssertEqual(schema?.continuesCompletion, true)
     }
 
     func testTableNameFilteringByPrefix() {
@@ -163,7 +165,7 @@ final class SQLCompletionEngineTests: XCTestCase {
 
     func testSnippetsAreAvailableAndFilterable() {
         let all = SQLSnippets.items()
-        XCTAssertEqual(all.map(\.title), ["sel", "selt", "ins", "upd", "del"])
+        XCTAssertEqual(all.map(\.title), ["sel", "selt", "case", "ins", "upd", "del"])
 
         let items = SQLCompletionEngine.suggestions(
             in: "se",
@@ -186,6 +188,45 @@ final class SQLCompletionEngineTests: XCTestCase {
         let whereItem = items.first { $0.kind == .keyword && $0.title == "WHERE" }
         XCTAssertEqual(whereItem?.insertText, "WHERE ")
         XCTAssertEqual(whereItem?.detail, "condição")
+    }
+
+    func testSelectKeywordInsertsStarAndFromAndContinues() {
+        let items = SQLCompletionEngine.suggestions(
+            in: "SEL",
+            at: 3,
+            catalog: catalog
+        )
+
+        let select = items.first { $0.kind == .keyword && $0.title == "SELECT" }
+        XCTAssertEqual(select?.insertText, "SELECT *\nFROM ")
+        XCTAssertEqual(select?.caretOffset, "SELECT *\nFROM ".utf16.count)
+        XCTAssertEqual(select?.continuesCompletion, true)
+    }
+
+    func testCaseKeywordProvidesCaseWhenTemplate() {
+        let items = SQLCompletionEngine.suggestions(
+            in: "CAS",
+            at: 3,
+            catalog: catalog
+        )
+
+        let caseItem = items.first { $0.kind == .keyword && $0.title == "CASE" }
+        XCTAssertEqual(caseItem?.detail, "modelo CASE WHEN")
+        XCTAssertEqual(caseItem?.insertText, "CASE\n    WHEN  THEN\n    ELSE \nEND")
+        XCTAssertEqual(caseItem?.caretOffset, "CASE\n    WHEN ".utf16.count)
+    }
+
+    func testCaseWhenSnippetIsAvailable() {
+        let snippets = SQLSnippets.items()
+        let item = snippets.first { $0.title == "case" }
+        XCTAssertEqual(item?.detail, "CASE WHEN")
+        XCTAssertEqual(item?.insertText, "CASE\n    WHEN  THEN\n    ELSE \nEND")
+        XCTAssertEqual(item?.caretOffset, "CASE\n    WHEN ".utf16.count)
+
+        let filtered = SQLCompletionEngine.suggestions(in: "case", at: 4, catalog: catalog)
+        XCTAssertEqual(filtered.first?.kind, .snippet)
+        XCTAssertEqual(filtered.first?.title, "case")
+        XCTAssertTrue(filtered.contains { $0.kind == .keyword && $0.title == "CASE" })
     }
 
     func testSnippetCaretOffsetPointsAtTablePosition() {
@@ -212,7 +253,7 @@ final class SQLCompletionEngineTests: XCTestCase {
             defaultSchema: "public"
         )
         let table = tables.first { $0.kind == .table }
-        XCTAssertEqual(table?.insertText, "\"Pedidos\"")
+        XCTAssertEqual(table?.insertText, "public.\"Pedidos\"")
 
         let sql = "SELECT p. FROM \"Pedidos\" p"
         let cursor = (sql as NSString).range(of: "p.").location + 2
@@ -380,7 +421,7 @@ final class SQLCompletionEngineTests: XCTestCase {
         )
         let vendas = items.first { $0.title == "pedidos" }
         let publicOrders = items.first { $0.title == "orders" }
-        XCTAssertEqual(vendas?.insertText, "pedidos")
+        XCTAssertEqual(vendas?.insertText, "vendas.pedidos")
         XCTAssertEqual(publicOrders?.insertText, "public.orders")
     }
 
@@ -412,7 +453,7 @@ final class SQLCompletionEngineTests: XCTestCase {
         XCTAssertFalse(column.completesNothing(for: "name"))
     }
 
-    func testSchemaQualifiedTableClosesWhenTypedByName() {
+    func testSchemaQualifiedTableStillAddsSchemaWhenTypedByName() {
         let table = SQLCompletionItem(
             kind: .table,
             title: "companies",
@@ -420,11 +461,11 @@ final class SQLCompletionEngineTests: XCTestCase {
             detail: "bakery"
         )
 
-        XCTAssertTrue(table.completesNothing(for: "companies"))
+        XCTAssertFalse(table.completesNothing(for: "companies"))
         XCTAssertFalse(table.completesNothing(for: "compan"))
     }
 
-    func testTypingFullTableNameLeavesNothingToComplete() {
+    func testTypingFullTableNameStillOffersSchemaQualification() {
         let sql = "SELECT * FROM orders"
         let items = SQLCompletionEngine.suggestions(
             in: sql,
@@ -432,8 +473,9 @@ final class SQLCompletionEngineTests: XCTestCase {
             catalog: catalog
         )
 
-        XCTAssertFalse(items.isEmpty)
-        XCTAssertTrue(items.allSatisfy { $0.completesNothing(for: "orders") })
+        let table = items.first { $0.kind == .table && $0.title == "orders" }
+        XCTAssertEqual(table?.insertText, "public.orders")
+        XCTAssertEqual(table?.completesNothing(for: "orders"), false)
     }
 
     func testPartialTableNameStillHasCompletions() {

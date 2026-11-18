@@ -30,15 +30,22 @@ public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
     /// that produced the item is case-insensitive too.
     ///
     /// An item whose title already matches the prefix still counts as useful
-    /// when it has a `caretOffset` (a snippet or a `column = ''` condition):
-    /// accepting it adds the surrounding template. Plain identifiers have no
-    /// caret offset, so typing the whole name means there is nothing left.
+    /// when it has a `caretOffset` (a snippet or a `column = ''` condition) or
+    /// when `insertText` adds schema qualification: accepting it adds the
+    /// surrounding template or the schema. Plain identifiers have neither, so
+    /// typing the whole name means there is nothing left.
     public func completesNothing(for prefix: String) -> Bool {
         guard !prefix.isEmpty else { return false }
         if insertText.caseInsensitiveCompare(prefix) == .orderedSame {
             return true
         }
-        return caretOffset == nil && title.caseInsensitiveCompare(prefix) == .orderedSame
+        // A plain identifier is inserted exactly as its title. When `insertText`
+        // adds schema qualification or a template, accepting it still changes
+        // the text even if the title already matches what was typed.
+        guard caretOffset == nil,
+              title.caseInsensitiveCompare(prefix) == .orderedSame
+        else { return false }
+        return insertText.caseInsensitiveCompare(title) == .orderedSame
     }
 
     public init(
@@ -234,7 +241,6 @@ public enum SQLCompletionEngine {
         case .tableName:
             items = tableNameSuggestions(
                 catalog: catalog,
-                defaultSchema: defaultSchema,
                 dialect: dialect
             )
 
@@ -299,16 +305,14 @@ public enum SQLCompletionEngine {
 
     private static func tableNameSuggestions(
         catalog: SQLCatalog,
-        defaultSchema: String?,
         dialect: SQLDialect
     ) -> [SQLCompletionItem] {
-        let current = defaultSchema ?? "public"
         var items: [SQLCompletionItem] = []
 
+        // Always qualify: the connection's search_path may not include the
+        // tab's schema, so a bare table name can fail at execution time.
         for table in catalog.tables {
-            let qualification: TableQualification =
-                table.schema.caseInsensitiveCompare(current) == .orderedSame ? .plain : .schemaQualified
-            items.append(tableItem(table, qualification: qualification, dialect: dialect))
+            items.append(tableItem(table, qualification: .schemaQualified, dialect: dialect))
         }
 
         for schema in catalog.schemas {
@@ -317,7 +321,8 @@ public enum SQLCompletionEngine {
                     kind: .schema,
                     title: schema,
                     insertText: identifier(schema, dialect: dialect) + ".",
-                    detail: nil
+                    detail: nil,
+                    continuesCompletion: true
                 )
             )
         }
@@ -356,8 +361,7 @@ public enum SQLCompletionEngine {
         }
 
         for table in catalog.tables {
-            let sameSchema = table.schema.caseInsensitiveCompare(current) == .orderedSame
-            add(tableItem(table, qualification: sameSchema ? .plain : .schemaQualified, dialect: dialect))
+            add(tableItem(table, qualification: .schemaQualified, dialect: dialect))
         }
 
         for schema in catalog.schemas {
@@ -366,7 +370,8 @@ public enum SQLCompletionEngine {
                     kind: .schema,
                     title: schema,
                     insertText: identifier(schema, dialect: dialect) + ".",
-                    detail: nil
+                    detail: nil,
+                    continuesCompletion: true
                 )
             )
         }
@@ -378,7 +383,8 @@ public enum SQLCompletionEngine {
         }
 
         for word in sqlKeywords {
-            if word == "WHERE" {
+            switch word {
+            case "WHERE":
                 add(
                     SQLCompletionItem(
                         kind: .keyword,
@@ -387,7 +393,32 @@ public enum SQLCompletionEngine {
                         detail: "condição"
                     )
                 )
-            } else {
+            case "SELECT":
+                // Selecting SELECT already writes the star and FROM, then
+                // reopens the list so the table can be picked right away.
+                let insertText = "SELECT *\nFROM "
+                add(
+                    SQLCompletionItem(
+                        kind: .keyword,
+                        title: word,
+                        insertText: insertText,
+                        detail: "consulta",
+                        caretOffset: (insertText as NSString).length,
+                        continuesCompletion: true
+                    )
+                )
+            case "CASE":
+                let insertText = "CASE\n    WHEN  THEN\n    ELSE \nEND"
+                add(
+                    SQLCompletionItem(
+                        kind: .keyword,
+                        title: word,
+                        insertText: insertText,
+                        detail: "modelo CASE WHEN",
+                        caretOffset: "CASE\n    WHEN ".utf16.count
+                    )
+                )
+            default:
                 add(SQLCompletionItem(kind: .keyword, title: word, insertText: word))
             }
         }
@@ -673,6 +704,7 @@ public enum SQLSnippets {
         let templates: [(trigger: String, detail: String, template: String)] = [
             ("sel", "SELECT", "SELECT *\nFROM |\nWHERE "),
             ("selt", "SELECT com limite", limitedSelect),
+            ("case", "CASE WHEN", "CASE\n    WHEN | THEN\n    ELSE \nEND"),
             ("ins", "INSERT", "INSERT INTO |\nVALUES ();"),
             ("upd", "UPDATE", "UPDATE |\nSET \nWHERE ;"),
             ("del", "DELETE", "DELETE FROM |\nWHERE ;"),

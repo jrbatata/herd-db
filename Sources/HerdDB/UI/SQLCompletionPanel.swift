@@ -334,9 +334,16 @@ final class SQLCompletionController: NSObject, NSTableViewDataSource, NSTableVie
             textView.setSelectedRange(NSRange(location: location, length: 0))
         }
         isInserting = false
+        let continues = item.continuesCompletion
 
         close()
         textView.window?.makeFirstResponder(textView)
+
+        // Templates such as `SELECT * FROM ` leave the caret where the next
+        // choice is another completion (the table name).
+        if continues {
+            requestCompletions(explicit: true)
+        }
     }
 
     private var selectedItem: SQLCompletionItem? {
