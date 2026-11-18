@@ -267,7 +267,6 @@ private struct ResultTable: View {
     @State private var localSortDescending = false
     @State private var localPageSize = 250
     @State private var localMessages = false
-    @State private var copyMenuHovering = false
 
     // Edição inline
     @State private var editedCells: [Int: [Int: String?]] = [:]
@@ -636,29 +635,21 @@ private struct ResultTable: View {
                         .padding(.horizontal, 2)
                 }
 
-                Menu {
-                    Button("Copiar") { copyRows(withHeaders: false) }
-                        .keyboardShortcut("c", modifiers: .command)
-                    Button("Copiar com cabeçalhos") { copyRows(withHeaders: true) }
-                        .keyboardShortcut("c", modifiers: [.command, .shift])
-                } label: {
-                    Icon(.copy, size: 12)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 26, height: 28)
-                        .background(
-                            copyMenuHovering ? Color.primary.opacity(0.09) : .clear,
-                            in: RoundedRectangle(cornerRadius: 6)
-                        )
-                        .contentShape(Rectangle())
-                } primaryAction: {
+                WindowIconButton(
+                    symbol: .copy,
+                    selected: false,
+                    help: "Copiar linhas selecionadas (⌘C)"
+                ) {
                     copyRows(withHeaders: false)
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .controlSize(.small)
-                .fixedSize()
-                .help("Copiar linhas selecionadas (⌘C)")
-                .onHover { copyMenuHovering = $0 }
+
+                WindowIconButton(
+                    symbol: .copyHeaders,
+                    selected: false,
+                    help: "Copiar linhas com cabeçalhos (⇧⌘C)"
+                ) {
+                    copyRows(withHeaders: true)
+                }
 
                 WindowIconButton(
                     symbol: .download,
