@@ -281,6 +281,7 @@ private struct ResultTable: View {
 
     @FocusState private var cellEditorFocused: Bool
     @FocusState private var filterFieldFocused: Bool
+    @FocusState private var gridFocused: Bool
 
     private static let pageSizeOptions = [50, 100, 250, 500]
 
@@ -524,6 +525,21 @@ private struct ResultTable: View {
                                 .id("\(currentPage)-\(activePageSize)")
                             }
                             .frame(minWidth: proxy.size.width, maxHeight: .infinity, alignment: .topLeading)
+                        }
+                        .focusable()
+                        .focused($gridFocused)
+                        .onKeyPress(keys: ["a", "c"], phases: .down) { press in
+                            guard press.modifiers.contains(.command) else { return .ignored }
+                            switch press.characters.lowercased() {
+                            case "a":
+                                selectAllRows()
+                                return .handled
+                            case "c":
+                                copyRows(withHeaders: press.modifiers.contains(.shift))
+                                return .handled
+                            default:
+                                return .ignored
+                            }
                         }
                         .onChange(of: insertedRows.count) { oldCount, newCount in
                             if newCount > oldCount, let last = pageRows.last {
@@ -833,6 +849,7 @@ private struct ResultTable: View {
     // MARK: - Selection
 
     private func handleRowClick(_ rowOffset: Int) {
+        gridFocused = true
         if editingCell?.rowOffset != rowOffset {
             commitActiveCellEdit()
         }
@@ -863,6 +880,26 @@ private struct ResultTable: View {
             selectedRows = [rowOffset]
             selectionAnchor = rowOffset
         }
+    }
+
+    /// ⌘A na grade seleciona todas as linhas do resultado. Em resultados
+    /// locais isso inclui as outras páginas; em tabelas navegáveis, apenas a
+    /// página carregada no servidor.
+    private func selectAllRows() {
+        if tablePage == nil {
+            selectedRows = Set(filteredRows.map(\.offset))
+            selectionAnchor = filteredRows.first?.offset
+        } else {
+            selectedRows = Set(pageRows.map(\.offset))
+            selectionAnchor = pageRows.first?.offset
+        }
+    }
+
+    /// Linhas que entram em copiar/exportar quando há seleção.
+    private var selectedRowsAcrossPages: [(offset: Int, element: [String?])] {
+        guard !selectedRows.isEmpty else { return pageRows }
+        let rows = tablePage == nil ? filteredRows : pageRows
+        return rows.filter { selectedRows.contains($0.offset) }
     }
 
     // MARK: - Inline Editing Actions
@@ -1104,7 +1141,7 @@ private struct ResultTable: View {
     // MARK: - Copy & CSV Export
 
     private func copyRows(withHeaders: Bool) {
-        let chosen = pageRows.filter { selectedRows.isEmpty || selectedRows.contains($0.offset) }
+        let chosen = selectedRowsAcrossPages
         var lines: [String] = []
         if withHeaders { lines.append(resultSet.columns.joined(separator: "\t")) }
         lines += chosen.map { item in
@@ -1135,7 +1172,7 @@ private struct ResultTable: View {
         lines.append(resultSet.columns.map(escapeCSV).joined(separator: ","))
         let rowsToExport: [[String?]] = selectedRows.isEmpty
             ? filteredRows.map(\.element)
-            : pageRows.filter { selectedRows.contains($0.offset) }.map { item in
+            : selectedRowsAcrossPages.map { item in
                 resultSet.columns.indices.map { colIdx in
                     effectiveValue(rowOffset: item.offset, colIndex: colIdx, originalRow: item.element)
                 }

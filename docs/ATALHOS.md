@@ -31,6 +31,8 @@ Os atalhos seguem o padrão do macOS e do VS Code sempre que possível.
 | `⌘B`                                  | Alternar barra lateral (padrão VS Code)                                              |
 | `⌥⌘B`                                 | Alternar inspetor de histórico (padrão VS Code)                                      |
 | `⌘J`                                  | Alternar painel inferior de resultados (padrão VS Code)                              |
+| `⌘A` (grade focada)                   | Selecionar todas as linhas do resultado                                              |
+| `⌘C` / `⇧⌘C` (grade focada)           | Copiar linhas / copiar linhas com cabeçalhos                                         |
 | `⌃⌘C`                                 | Alternar console de log (consultas enviadas ao servidor)                             |
 | `⌘I`                                  | Estrutura / DDL da tabela selecionada                                                |
 | `⌘R`                                  | Atualizar árvore / nó selecionado                                                    |
