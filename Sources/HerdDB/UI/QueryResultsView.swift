@@ -1459,13 +1459,44 @@ private struct ColumnFilterEditor: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
 
-            Picker("Condição", selection: $operation) {
+            Menu {
                 ForEach(ColumnFilter.Operation.allCases, id: \.self) { item in
-                    Text(item.displayName).tag(item)
+                    Button {
+                        operation = item
+                    } label: {
+                        if item == operation {
+                            Label(item.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(item.displayName)
+                        }
+                    }
                 }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(operation.displayName)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 0)
+                    Icon(.chevron, size: 10)
+                        .rotationEffect(.degrees(90))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity)
+                .frame(height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.5)
+                )
+                .contentShape(Rectangle())
             }
-            .labelsHidden()
-            .frame(width: 210)
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize(horizontal: false, vertical: true)
 
             if operation.needsValue {
                 TextField("Valor", text: $value)
