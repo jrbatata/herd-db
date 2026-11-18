@@ -328,6 +328,7 @@ struct QueryTabView: View {
             tableSortColumn: tab.tableSortColumn,
             tableSortDescending: tab.tableSortDescending,
             columnFilters: tab.columnFilters,
+            pageSize: tab.tablePageSize,
             showMessages: $tab.showMessages,
             messageOverride: tab.runMessage,
             sourceTable: tab.sourceTable,
@@ -335,6 +336,10 @@ struct QueryTabView: View {
             dialect: dialect,
             onBrowsePage: tab.tablePage == nil ? nil : { page in
                 tab.browseTable(app: app, page: page)
+            },
+            onPageSizeChange: tab.tablePage == nil ? nil : { size in
+                tab.tablePageSize = size
+                tab.browseTable(app: app, page: 0)
             },
             onApplyFilter: tab.tablePage == nil ? nil : { filter in
                 tab.tableFilter = filter

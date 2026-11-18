@@ -41,6 +41,8 @@ final class QueryTab: Identifiable {
     var tableSortDescending = false
     /// Filtros por coluna aplicados no servidor ao navegar pela tabela.
     var columnFilters: [ColumnFilter] = []
+    /// Quantidade de linhas carregadas por página ao navegar pela tabela.
+    var tablePageSize = 250
     /// Alterna o rodapé entre dados e mensagens; comandos de escrita abrem mensagens sozinhos.
     var showMessages = false
     /// Mensagem detalhada da última operação, preservada entre recargas da grade.
@@ -163,12 +165,13 @@ final class QueryTab: Identifiable {
         let descending = tableSortDescending
         let schema = self.schema
         let columnFilters = self.columnFilters
+        let pageSize = self.tablePageSize
         state = .running
         showMessages = false
         task = Task { [weak self] in
             do {
                 let loaded = try await driver.browseTable(database: database, schema: schema,
-                                                          table: table, page: page, pageSize: 500,
+                                                          table: table, page: page, pageSize: pageSize,
                                                           filter: filter, sortColumn: sortColumn,
                                                           descending: descending,
                                                           columnFilters: columnFilters)

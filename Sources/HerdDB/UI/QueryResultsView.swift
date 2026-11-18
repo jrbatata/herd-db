@@ -10,12 +10,14 @@ struct QueryResultsView: View {
     var tableSortColumn: String? = nil
     var tableSortDescending = false
     var columnFilters: [ColumnFilter] = []
+    var pageSize: Int = 250
     var showMessages: Binding<Bool>? = nil
     var messageOverride: String? = nil
     var sourceTable: String? = nil
     var schema: String? = nil
     var dialect: SQLDialect = .postgres
     var onBrowsePage: ((Int) -> Void)? = nil
+    var onPageSizeChange: ((Int) -> Void)? = nil
     var onApplyFilter: ((String) -> Void)? = nil
     var onSort: ((String, Bool) -> Void)? = nil
     var onColumnFiltersChange: (([ColumnFilter]) -> Void)? = nil
@@ -81,12 +83,14 @@ struct QueryResultsView: View {
                     tableSortColumn: tableSortColumn,
                     tableSortDescending: tableSortDescending,
                     columnFilters: columnFilters,
+                    tablePageSize: pageSize,
                     messagesVisible: showMessages,
                     messageOverride: messageOverride,
                     sourceTable: sourceTable,
                     schema: schema,
                     dialect: dialect,
                     onBrowsePage: onBrowsePage,
+                    onPageSizeChange: onPageSizeChange,
                     onApplyFilter: onApplyFilter,
                     onSort: onSort,
                     onColumnFiltersChange: onColumnFiltersChange,
@@ -238,12 +242,14 @@ private struct ResultTable: View {
     let tableSortColumn: String?
     let tableSortDescending: Bool
     let columnFilters: [ColumnFilter]
+    let tablePageSize: Int
     let messagesVisible: Binding<Bool>?
     let messageOverride: String?
     let sourceTable: String?
     let schema: String?
     let dialect: SQLDialect
     let onBrowsePage: ((Int) -> Void)?
+    let onPageSizeChange: ((Int) -> Void)?
     let onApplyFilter: ((String) -> Void)?
     let onSort: ((String, Bool) -> Void)?
     let onColumnFiltersChange: (([ColumnFilter]) -> Void)?
@@ -259,6 +265,7 @@ private struct ResultTable: View {
     @State private var localColumnFilters: [ColumnFilter] = []
     @State private var localSortColumn: String?
     @State private var localSortDescending = false
+    @State private var localPageSize = 250
     @State private var localMessages = false
     @State private var copyMenuHovering = false
 
@@ -275,7 +282,12 @@ private struct ResultTable: View {
     @FocusState private var cellEditorFocused: Bool
     @FocusState private var filterFieldFocused: Bool
 
-    private var pageSize: Int { tablePage == nil ? 100 : 500 }
+    private static let pageSizeOptions = [50, 100, 250, 500]
+
+    private var activePageSize: Int {
+        tablePage == nil ? localPageSize : tablePageSize
+    }
+
     private var canEditInline: Bool { sourceTable != nil && onCommitSQL != nil }
 
     init(
@@ -286,12 +298,14 @@ private struct ResultTable: View {
         tableSortColumn: String? = nil,
         tableSortDescending: Bool = false,
         columnFilters: [ColumnFilter] = [],
+        tablePageSize: Int = 250,
         messagesVisible: Binding<Bool>? = nil,
         messageOverride: String? = nil,
         sourceTable: String? = nil,
         schema: String? = nil,
         dialect: SQLDialect = .postgres,
         onBrowsePage: ((Int) -> Void)? = nil,
+        onPageSizeChange: ((Int) -> Void)? = nil,
         onApplyFilter: ((String) -> Void)? = nil,
         onSort: ((String, Bool) -> Void)? = nil,
         onColumnFiltersChange: (([ColumnFilter]) -> Void)? = nil,
@@ -305,12 +319,14 @@ private struct ResultTable: View {
         self.tableSortColumn = tableSortColumn
         self.tableSortDescending = tableSortDescending
         self.columnFilters = columnFilters
+        self.tablePageSize = tablePageSize
         self.messagesVisible = messagesVisible
         self.messageOverride = messageOverride
         self.sourceTable = sourceTable
         self.schema = schema
         self.dialect = dialect
         self.onBrowsePage = onBrowsePage
+        self.onPageSizeChange = onPageSizeChange
         self.onApplyFilter = onApplyFilter
         self.onSort = onSort
         self.onColumnFiltersChange = onColumnFiltersChange
@@ -403,15 +419,15 @@ private struct ResultTable: View {
 
     private var basePageRows: [(offset: Int, element: [String?])] {
         if let tablePage {
-            return filteredRows.map { (offset: tablePage.page * pageSize + $0.offset, element: $0.element) }
+            return filteredRows.map { (offset: tablePage.page * activePageSize + $0.offset, element: $0.element) }
         }
-        let start = min(page * pageSize, filteredRows.count)
-        return Array(filteredRows.dropFirst(start).prefix(pageSize))
+        let start = min(page * activePageSize, filteredRows.count)
+        return Array(filteredRows.dropFirst(start).prefix(activePageSize))
     }
 
     private var pageRows: [(offset: Int, element: [String?])] {
         var rows = basePageRows
-        let baseNextOffset = (basePageRows.last?.offset ?? ((tablePage?.page ?? page) * pageSize - 1)) + 1
+        let baseNextOffset = (basePageRows.last?.offset ?? ((tablePage?.page ?? page) * activePageSize - 1)) + 1
         for (idx, ins) in insertedRows.enumerated() {
             rows.append((offset: baseNextOffset + idx, element: ins.values))
         }
@@ -419,7 +435,7 @@ private struct ResultTable: View {
     }
 
     private func isInsertedOffset(_ offset: Int) -> Int? {
-        let baseNextOffset = (basePageRows.last?.offset ?? ((tablePage?.page ?? page) * pageSize - 1)) + 1
+        let baseNextOffset = (basePageRows.last?.offset ?? ((tablePage?.page ?? page) * activePageSize - 1)) + 1
         let idx = offset - baseNextOffset
         guard insertedRows.indices.contains(idx) else { return nil }
         return idx
@@ -433,7 +449,7 @@ private struct ResultTable: View {
         editedCells.count + insertedRows.count + deletedRowOffsets.count
     }
 
-    private var pageCount: Int { max(1, ((tablePage?.totalRows ?? filteredRows.count) + pageSize - 1) / pageSize) }
+    private var pageCount: Int { max(1, ((tablePage?.totalRows ?? filteredRows.count) + activePageSize - 1) / activePageSize) }
     private var currentPage: Int { tablePage?.page ?? page }
 
     private static func initialWidths(for set: ResultSet) -> [CGFloat] {
@@ -505,6 +521,7 @@ private struct ResultTable: View {
                                         }
                                     }
                                 }
+                                .id("\(currentPage)-\(activePageSize)")
                             }
                             .frame(minWidth: proxy.size.width, maxHeight: .infinity, alignment: .topLeading)
                         }
@@ -694,9 +711,14 @@ private struct ResultTable: View {
     private var pagination: some View {
         HStack(spacing: 10) {
             if !resultSet.columns.isEmpty {
-                let count = (tablePage?.totalRows ?? filteredRows.count) + insertedRows.count - deletedRowOffsets.count
-                Text("\(max(0, count)) \(count == 1 ? "linha" : "linhas")")
-                    .foregroundStyle(.secondary)
+                if messagesBinding.wrappedValue {
+                    Text("\(totalRowCount) \(totalRowCount == 1 ? "linha" : "linhas") no total")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Exibindo \(visibleRowCount) de \(totalRowCount) \(totalRowCount == 1 ? "linha" : "linhas")")
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
                 if !selectedRows.isEmpty {
                     Text("· \(selectedRows.count) selecionada\(selectedRows.count == 1 ? "" : "s")")
                         .foregroundStyle(.secondary)
@@ -715,6 +737,10 @@ private struct ResultTable: View {
                     .padding(.horizontal, 10)
                     .help("Resultado da execução")
             } else {
+                if !messagesBinding.wrappedValue {
+                    pageSizeMenu
+                }
+
                 Picker("Painel do resultado", selection: messagesBinding) {
                     Text("Dados").tag(false)
                     Text("Mensagens").tag(true)
@@ -744,6 +770,54 @@ private struct ResultTable: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 12)
         .frame(height: 30)
+    }
+
+    private var pageSizeMenu: some View {
+        Menu {
+            ForEach(Self.pageSizeOptions, id: \.self) { size in
+                Button {
+                    changePageSize(size)
+                } label: {
+                    if size == activePageSize {
+                        Label("\(size) por página", systemImage: "checkmark")
+                    } else {
+                        Text("\(size) por página")
+                    }
+                }
+            }
+        } label: {
+            Text("\(activePageSize) por página")
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Linhas por página")
+    }
+
+    /// Total de linhas após os filtros e as alterações pendentes.
+    private var totalRowCount: Int {
+        max(0, (tablePage?.totalRows ?? filteredRows.count) + insertedRows.count - deletedRowOffsets.count)
+    }
+
+    /// Linhas efetivamente desenhadas na página atual.
+    private var visibleRowCount: Int {
+        pageRows.reduce(0) { count, row in
+            count + (deletedRowOffsets.contains(row.offset) ? 0 : 1)
+        }
+    }
+
+    private func changePageSize(_ size: Int) {
+        guard size != activePageSize else { return }
+        commitActiveCellEdit()
+        selectedRows.removeAll()
+        selectionAnchor = nil
+        if let onPageSizeChange, tablePage != nil {
+            onPageSizeChange(size)
+        } else {
+            localPageSize = size
+            page = 0
+        }
     }
 
     private func changePage(_ target: Int) {
@@ -807,7 +881,7 @@ private struct ResultTable: View {
     private func deleteSelectedRows() {
         commitActiveCellEdit()
         guard !selectedRows.isEmpty else { return }
-        let baseNextOffset = (basePageRows.last?.offset ?? ((tablePage?.page ?? page) * pageSize - 1)) + 1
+        let baseNextOffset = (basePageRows.last?.offset ?? ((tablePage?.page ?? page) * activePageSize - 1)) + 1
         var insertedIndicesToRemove: IndexSet = []
 
         for offset in selectedRows {
@@ -1178,8 +1252,12 @@ private struct ResultTable: View {
         if tablePage != nil {
             onSort?(column, descending)
         } else {
+            commitActiveCellEdit()
             localSortColumn = column
             localSortDescending = descending
+            page = 0
+            selectedRows.removeAll()
+            selectionAnchor = nil
         }
     }
 
@@ -1190,7 +1268,11 @@ private struct ResultTable: View {
         if tablePage != nil {
             onColumnFiltersChange?(filters)
         } else {
+            commitActiveCellEdit()
             localColumnFilters = filters
+            page = 0
+            selectedRows.removeAll()
+            selectionAnchor = nil
         }
     }
 
