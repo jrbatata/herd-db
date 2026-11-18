@@ -483,7 +483,8 @@ final class ObjectTreeModel {
         }
 
         func search(_ node: TreeNode, depth: Int) {
-            if node.kind != .error, node.title.localizedCaseInsensitiveContains(query) {
+            let isMatch = node.kind != .error && node.title.localizedCaseInsensitiveContains(query)
+            if isMatch {
                 result.append(
                     TreeRow(
                         node: node,
@@ -493,7 +494,16 @@ final class ObjectTreeModel {
                     )
                 )
             }
-            if let kids = children[node.id] {
+            guard let kids = children[node.id] else { return }
+
+            // Um resultado encontrado pode vir recolhido, mas ao expandir precisa
+            // mostrar o conteúdo abaixo dele (colunas de uma tabela, por exemplo),
+            // mesmo que esses filhos não correspondam à busca.
+            if isMatch, expanded.contains(node.id) {
+                for kid in kids {
+                    append(kid, depth: depth + 1)
+                }
+            } else {
                 for kid in kids {
                     search(kid, depth: depth + 1)
                 }
